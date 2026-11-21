@@ -1,0 +1,81 @@
+# Production stack — pulls prebuilt images from Docker Hub (no source needed).
+#
+# On the server you only need: this file, Caddyfile, and .env
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Pin KAST_TAG in .env (e.g. b448cf7) to deploy a specific build; defaults to latest.
+
+volumes:
+  kast_config:  # Persists generated kast.toml across container restarts
+  kast_data:    # Persists kast.db (SQLite); subdirs are overlaid by bind mounts below
+  caddy_data:   # Let's Encrypt certificates and ACME account
+  caddy_config:
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  server:
+    image: mariouzae/kast-server:${KAST_TAG:-latest}
+    ports:
+      # Localhost only — public traffic goes through caddy.
+      - "127.0.0.1:8080:8080"
+      # WebRTC ICE UDP ports — uncomment for remote WHEP listeners and set
+      # KAST_WEBRTC_NAT_IPS / KAST_WEBRTC_UDP_PORT_MIN / _MAX in .env.
+      # - "40000-40100:40000-40100/udp"
+    volumes:
+      - kast_config:/app/config
+      - kast_data:/app/data
+      - ./data/music:/app/data/music
+      - ./data/hls:/app/data/hls
+      - ./data/mounts:/app/data/mounts
+      - ./data/library:/app/data/library
+      - ./data/playlists:/app/data/playlists
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      - GOGC=100
+      - KAST_API_KEY=${KAST_API_KEY:-}
+      - KAST_JWT_SECRET=${KAST_JWT_SECRET:-}
+      - KAST_PUBLIC_URL=${KAST_PUBLIC_URL:-}
+      - KAST_CORS_ORIGINS=${KAST_CORS_ORIGINS:-}
+      - KAST_TRUST_PROXY=${KAST_TRUST_PROXY:-true}
+      - KAST_PROXY_HEADER=${KAST_PROXY_HEADER:-X-Forwarded-For}
+      - KAST_WEBRTC_NAT_IPS=${KAST_WEBRTC_NAT_IPS:-}
+      - KAST_WEBRTC_UDP_PORT_MIN=${KAST_WEBRTC_UDP_PORT_MIN:-}
+      - KAST_WEBRTC_UDP_PORT_MAX=${KAST_WEBRTC_UDP_PORT_MAX:-}
+
+  dashboard:
+    image: mariouzae/kast-dashboard:${KAST_TAG:-latest}
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      - API_URL=http://server:8080
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      - server
+
+  caddy:
+    image: caddy:2.8-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      - KAST_API_DOMAIN=${KAST_API_DOMAIN:-}
+      - KAST_DASHBOARD_DOMAIN=${KAST_DASHBOARD_DOMAIN:-}
+      - ACME_EMAIL=${ACME_EMAIL:-}
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      - server
+      - dashboard

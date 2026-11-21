@@ -21,6 +21,7 @@ type savedSession struct {
 type SessionInfo struct {
 	Mount      string `json:"mount"`
 	PlaylistID string `json:"playlist_id"`
+	Mode       string `json:"mode"` // "sequential" or "shuffle"
 }
 
 // saveState persists a snapshot of all active sessions to the database

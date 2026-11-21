@@ -11,6 +11,9 @@ import (
 	"path/filepath"
 	"syscall"
 	"time"
+	// Embed the IANA tz database so server.timezone works in minimal images
+	// (alpine has no /usr/share/zoneinfo without the tzdata package).
+	_ "time/tzdata"
 
 	"golang.org/x/crypto/acme/autocert"
 

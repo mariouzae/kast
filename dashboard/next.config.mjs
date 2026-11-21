@@ -13,6 +13,13 @@ function getGitCommit() {
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone",
+  experimental: {
+    // Next.js forwards only the first 10 MB of a proxied request body by
+    // default, so a multi-file upload through the /api rewrite below was cut
+    // short and failed with "socket hang up" (HTTP 500). Match the server's
+    // own 500 MB upload limit (maxUploadBytes in server/internal/api/router.go).
+    proxyClientMaxBodySize: "500mb",
+  },
   env: {
     NEXT_PUBLIC_GIT_COMMIT: process.env.GIT_COMMIT || getGitCommit(),
     NEXT_PUBLIC_VERSION:    process.env.npm_package_version || "0.1.0",

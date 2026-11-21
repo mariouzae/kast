@@ -378,6 +378,81 @@ Currently playing track, or `null` if idle.
 
 ---
 
+### `GET /api/mounts/:name/sync`
+
+Sync feed for client apps that download tracks and play them locally instead
+of listening to the HLS stream. Returns the track on air with its live
+position, and the tracks the AutoDJ is expected to play next, each with a
+download URL (see [`GET /api/library/:id/download`](#get-apilibraryiddownload)).
+
+**Query**
+- `upcoming` — how many upcoming tracks to return (default `5`, max `20`)
+- `horizon_s` — instead of a count, return enough upcoming tracks to cover
+  this many seconds of airtime after the current track ends (max one week,
+  3000 tracks). Use `86400` to keep a day of audio offline. The playlist
+  wraps as often as needed; in `shuffle` mode only the current pass is in the
+  real order, but later passes contain the same tracks. The response echoes
+  `horizon_s`.
+
+**Response** `200`
+
+```json
+{
+  "mount":       "/client-a",
+  "server_time": "2026-11-15T12:00:00Z",
+  "playlist_id": "...",
+  "mode":        "sequential",
+  "jingles": {
+    "every_tracks": 2,
+    "every_minutes": 0,
+    "pool": [
+      { "id": "...", "title": "Station ID", "duration_ms": 22000, "kind": "jingle", "...": "..." }
+    ]
+  },
+  "now_playing": {
+    "id": "...", "title": "Blue Monday", "artist": "New Order", "album": "...",
+    "duration_ms": 437000, "size_bytes": 10485760, "format": "mp3",
+    "download_url": "/api/library/<id>/download",
+    "kind": "track",
+    "started_at": "2026-11-15T11:58:00Z",
+    "elapsed_ms": 120000
+  },
+  "upcoming": [
+    { "id": "...", "title": "...", "artist": "...", "album": "...",
+      "duration_ms": 215000, "size_bytes": 5242880, "format": "mp3",
+      "download_url": "/api/library/<id>/download", "kind": "track" },
+    { "id": "...", "title": "Station ID", "duration_ms": 22000,
+      "download_url": "/api/library/<id>/download", "kind": "jingle", "...": "..." }
+  ]
+}
+```
+
+- `elapsed_ms` is measured at `server_time`. Add the time since the response
+  arrived, rather than comparing `started_at` to the device clock, to avoid
+  clock skew.
+- `kind` is `"track"` for playlist tracks and manual inserts, `"jingle"` for a
+  track from the mount's jingle/ad pool.
+- `upcoming` is a prediction, in the order the AutoDJ picks: manual "play
+  next" inserts first, then jingles where the mount's jingle rule falls due,
+  between playlist tracks. In `shuffle` mode a count-limited list stops at the
+  end of the current shuffle pass. Scheduled playlist changes and skips take
+  effect on the next call.
+- `jingles` is the mount's jingle/ad rule, or `null` when none is set
+  (`every_tracks`/`every_minutes` of `0` are off). `pool` lists every jingle
+  the AutoDJ picks from, in rotation order, so a client can keep all of them
+  offline. Jingle positions are worked out from the play history, which the
+  server keeps in memory: right after a Kast restart, or when no jingle is
+  among the last ten tracks, the first predicted jingle may be off by a track
+  or by which jingle of the pool it is. It is exact from the first jingle
+  played on.
+- `jingles` shows the mount's **current** settings. A running AutoDJ keeps the
+  settings it started with, so restart AutoDJ on the mount after changing them.
+- A mount with no AutoDJ session returns `now_playing: null` and `upcoming: []`.
+
+**Errors** `404` mount not found
+
+---
+
 ### `GET /api/autodj/sessions`
 
 All active AutoDJ sessions across every mount.
@@ -474,6 +549,21 @@ Override track metadata (does not modify the file's ID3 tags).
 ```
 
 **Response** `200` — updated track object · `404` track not found
+
+---
+
+### `GET /api/library/:id/download`
+
+Download a track's original audio file. The response is sent with
+`Content-Disposition: attachment` using the file's name on disk, and supports
+HTTP `Range` requests.
+
+```bash
+curl -OJ -H "Authorization: Bearer $KAST_API_KEY" \
+  http://localhost:8080/api/library/<track_id>/download
+```
+
+**Response** `200` — audio file bytes · `404` track not found, or its file is missing on disk
 
 ---
 

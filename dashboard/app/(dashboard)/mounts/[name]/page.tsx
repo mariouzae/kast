@@ -574,7 +574,7 @@ function MountAutoDJTab({ mount }: { mount: Mount }) {
   const [playlists, setPlaylists]               = React.useState<APIPlaylist[]>([])
   const [session, setSession]                   = React.useState<APIAutoDJSession | null>(null)
   const [selectedPlaylist, setSelectedPlaylist] = React.useState("")
-  const [mode, setMode]                         = React.useState("shuffle")
+  const [mode, setMode]                         = React.useState<"sequential" | "shuffle">("shuffle")
   const [loading, setLoading]                   = React.useState(true)
   const [acting, setActing]                     = React.useState(false)
   const [trackData, setTrackData]               = React.useState<APIAutoDJTracks | null>(null)
@@ -592,7 +592,16 @@ function MountAutoDJTab({ mount }: { mount: Mount }) {
 
   React.useEffect(() => {
     Promise.all([api.playlists.list(), api.mounts.autoDJStatus(mount.name).catch(() => null)])
-      .then(([pls, sess]) => { setPlaylists(pls); setSession(sess); if (sess) setSelectedPlaylist(sess.playlist_id) })
+      .then(([pls, sess]) => {
+        setPlaylists(pls)
+        setSession(sess)
+        if (sess) {
+          setSelectedPlaylist(sess.playlist_id)
+          // Reflect the running session's mode; otherwise the default
+          // "shuffle" would be sent on the next Restart.
+          if (sess.mode) setMode(sess.mode)
+        }
+      })
       .finally(() => setLoading(false))
   }, [mount.name])
 
@@ -617,7 +626,7 @@ function MountAutoDJTab({ mount }: { mount: Mount }) {
     if (!selectedPlaylist) return
     setActing(true)
     api.mounts.startAutoDJ(mount.name, { playlist_id: selectedPlaylist, mode })
-      .then(() => { setSession({ mount: mount.name, playlist_id: selectedPlaylist }); toast.success("AutoDJ started") })
+      .then(() => { setSession({ mount: mount.name, playlist_id: selectedPlaylist, mode }); toast.success("AutoDJ started") })
       .catch((err) => toast.error(`Failed: ${err.message}`))
       .finally(() => setActing(false))
   }
@@ -635,7 +644,7 @@ function MountAutoDJTab({ mount }: { mount: Mount }) {
     setActing(true)
     api.mounts.stopAutoDJ(mount.name).catch(() => {})
       .then(() => api.mounts.startAutoDJ(mount.name, { playlist_id: selectedPlaylist, mode }))
-      .then(() => { setSession({ mount: mount.name, playlist_id: selectedPlaylist }); toast.success("AutoDJ restarted") })
+      .then(() => { setSession({ mount: mount.name, playlist_id: selectedPlaylist, mode }); toast.success("AutoDJ restarted") })
       .catch((err) => toast.error(`Failed: ${err.message}`))
       .finally(() => setActing(false))
   }

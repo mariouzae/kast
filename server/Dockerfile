@@ -1,5 +1,7 @@
 # ── Build stage ───────────────────────────────────────────────────────────────
-FROM golang:1.25-alpine AS builder
+# Runs on the build host's native arch and cross-compiles for the target,
+# so multi-platform builds don't emulate the Go compiler under QEMU.
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS builder
 
 RUN apk add --no-cache git ca-certificates
 
@@ -12,7 +14,9 @@ COPY . .
 ARG VERSION=dev
 ARG GIT_COMMIT=unknown
 ARG BUILD_TIME=unknown
-RUN CGO_ENABLED=0 GOOS=linux go build \
+ARG TARGETOS
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build \
     -ldflags="-s -w \
       -X github.com/riza/kast/internal/version.Version=${VERSION} \
       -X github.com/riza/kast/internal/version.GitCommit=${GIT_COMMIT} \

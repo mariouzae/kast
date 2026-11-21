@@ -5,11 +5,14 @@ package api_test
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -46,6 +49,13 @@ type testEnv struct {
 // buildTestEnv wires all components together and returns a ready-to-test env.
 func buildTestEnv(t *testing.T) *testEnv {
 	t.Helper()
+	return buildTestEnvWithSeed(t, nil)
+}
+
+// buildTestEnvWithSeed is like buildTestEnv but runs seed against the DB (and
+// the library scan directory) before the library scanner loads its index.
+func buildTestEnvWithSeed(t *testing.T, seed func(d *sql.DB, scanDir string)) *testEnv {
+	t.Helper()
 
 	d, err := db.Open(":memory:")
 	require.NoError(t, err)
@@ -60,6 +70,9 @@ func buildTestEnv(t *testing.T) *testEnv {
 	require.NoError(t, err)
 
 	scanDir := t.TempDir()
+	if seed != nil {
+		seed(d, scanDir)
+	}
 	scanner, err := library.NewScanner([]string{scanDir}, []string{".mp3"}, d)
 	require.NoError(t, err)
 
@@ -527,6 +540,77 @@ func TestAPI_Library_List_Empty(t *testing.T) {
 	env := buildTestEnv(t)
 	resp := env.do(t, "GET", "/api/library", nil, env.authHeaders())
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func seedTrack(t *testing.T, id, path string) func(d *sql.DB, scanDir string) {
+	return func(d *sql.DB, scanDir string) {
+		_, err := d.Exec(`
+			INSERT INTO tracks (id, path, title, artist, album, genre, duration_ms, bitrate_kbps, size_bytes, folder, added_at, mtime_unix)
+			VALUES (?, ?, 'T', 'A', '', '', 1000, 128, 0, '', '2026-01-01T00:00:00Z', 0)`,
+			id, filepath.Join(scanDir, path))
+		require.NoError(t, err)
+	}
+}
+
+func TestAPI_Library_Download(t *testing.T) {
+	content := []byte("ID3 fake mp3 bytes")
+	env := buildTestEnvWithSeed(t, func(d *sql.DB, scanDir string) {
+		require.NoError(t, os.WriteFile(filepath.Join(scanDir, "song.mp3"), content, 0o600))
+		seedTrack(t, "trk1", "song.mp3")(d, scanDir)
+	})
+
+	resp := env.do(t, "GET", "/api/library/trk1/download", nil, env.authHeaders())
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Contains(t, resp.Header.Get("Content-Disposition"), `attachment; filename="song.mp3"`)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, content, body)
+}
+
+func TestAPI_Library_Download_NotFound(t *testing.T) {
+	env := buildTestEnv(t)
+	resp := env.do(t, "GET", "/api/library/nope/download", nil, env.authHeaders())
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+}
+
+func TestAPI_Library_Download_FileMissing(t *testing.T) {
+	env := buildTestEnvWithSeed(t, seedTrack(t, "gone", "deleted.mp3"))
+	resp := env.do(t, "GET", "/api/library/gone/download", nil, env.authHeaders())
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+}
+
+func TestAPI_Library_Download_RequiresAuth(t *testing.T) {
+	env := buildTestEnv(t)
+	resp := env.do(t, "GET", "/api/library/trk1/download", nil, nil)
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestAPI_Sync_MountNotFound(t *testing.T) {
+	env := buildTestEnv(t)
+	resp := env.do(t, "GET", "/api/mounts/nope/sync", nil, env.authHeaders())
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+}
+
+func TestAPI_Sync_IdleMount(t *testing.T) {
+	env := buildTestEnv(t)
+	resp := env.do(t, "POST", "/api/mounts", jsonBody(map[string]any{
+		"name": "/client-a", "source_password": "secretpass123",
+	}), env.authHeaders())
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	resp = env.do(t, "GET", "/api/mounts/client-a/sync", nil, env.authHeaders())
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	body := readJSON(t, resp.Body)
+	assert.Equal(t, "/client-a", body["mount"])
+	assert.Nil(t, body["now_playing"])
+	assert.Equal(t, []any{}, body["upcoming"])
+	assert.NotEmpty(t, body["server_time"])
+}
+
+func TestAPI_Sync_RequiresAuth(t *testing.T) {
+	env := buildTestEnv(t)
+	resp := env.do(t, "GET", "/api/mounts/client-a/sync", nil, nil)
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }
 
 // ── Users ─────────────────────────────────────────────────────────────────────

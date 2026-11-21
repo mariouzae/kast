@@ -1,6 +1,8 @@
 volumes:
   kast_config:  # Persists generated kast.toml across container restarts
   kast_data:    # Persists kast.db (SQLite); subdirs are overlaid by bind mounts below
+  caddy_data:   # Let's Encrypt certificates and ACME account — keep it to avoid rate limits
+  caddy_config:
 
 services:
   server:
@@ -12,9 +14,9 @@ services:
         GIT_COMMIT: ${GIT_COMMIT:-unknown}
         BUILD_TIME: ${BUILD_TIME:-unknown}
     ports:
-      - "8080:8080"
-      # Uncomment for HTTPS — also uncomment the ./certs volume below:
-      # - "443:443"
+      # Bound to localhost only — public HTTPS traffic goes through the caddy service.
+      # Reach it directly via SSH tunnel: ssh -L 8080:localhost:8080 user@vps
+      - "127.0.0.1:8080:8080"
       # WebRTC ICE UDP ports — required for remote WHEP (WebRTC) listeners.
       # Must match udp_port_min/udp_port_max in kast.toml (or KAST_WEBRTC_* vars).
       # - "40000-40100:40000-40100/udp"
@@ -44,7 +46,9 @@ services:
       - KAST_SSL_CERT_FILE=${KAST_SSL_CERT_FILE:-}
       - KAST_SSL_KEY_FILE=${KAST_SSL_KEY_FILE:-}
       - KAST_SSL_DOMAINS=${KAST_SSL_DOMAINS:-}
-      - KAST_TRUST_PROXY=${KAST_TRUST_PROXY:-}
+      # Behind the caddy service these default to trusting X-Forwarded-For.
+      - KAST_TRUST_PROXY=${KAST_TRUST_PROXY:-true}
+      - KAST_PROXY_HEADER=${KAST_PROXY_HEADER:-X-Forwarded-For}
       # WebRTC/WHEP configuration — required for remote WebRTC listeners.
       # Set KAST_WEBRTC_NAT_IPS to your server's public IP (comma-separated).
       # Set port range to match the UDP ports exposed above.
@@ -61,7 +65,8 @@ services:
         VERSION:    ${VERSION:-dev}
         API_URL:    ${API_URL:-http://server:8080}
     ports:
-      - "${DASHBOARD_PORT:-3000}:3000"
+      # Localhost only — served publicly by the caddy service.
+      - "127.0.0.1:${DASHBOARD_PORT:-3000}:3000"
     environment:
       # Server URL used by Next.js rewrites to proxy /api/* and /hls/* server-side.
       # Keep the Docker service name here — browsers never see this address.
@@ -69,3 +74,25 @@ services:
     restart: unless-stopped
     depends_on:
       - server
+
+  # Reverse proxy + automatic HTTPS (Let's Encrypt). Requires DNS A records for
+  # KAST_API_DOMAIN and KAST_DASHBOARD_DOMAIN pointing at this host, and ports
+  # 80/443 open in the firewall. See ./Caddyfile.
+  caddy:
+    image: caddy:2.8-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      - KAST_API_DOMAIN=${KAST_API_DOMAIN:-}
+      - KAST_DASHBOARD_DOMAIN=${KAST_DASHBOARD_DOMAIN:-}
+      - ACME_EMAIL=${ACME_EMAIL:-}
+    restart: unless-stopped
+    depends_on:
+      - server
+      - dashboard

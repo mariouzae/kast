@@ -1,7 +1,9 @@
 # ── Build stage ───────────────────────────────────────────────────────────────
 # Use Debian-based image for the build so native modules (lightningcss, etc.)
 # resolve against glibc without musl compatibility issues.
-FROM node:20 AS builder
+# Build on the host's native arch: the output is platform-independent JS, and
+# Next's native compiler segfaults under QEMU emulation in cross-arch builds.
+FROM --platform=$BUILDPLATFORM node:20 AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./

@@ -348,6 +348,7 @@ func NewApp(
 	api.Post("/mounts/:name/autodj/queue", djh.InsertNext)
 	api.Get("/mounts/:name/autodj/history", djh.History)
 	api.Get("/mounts/:name/nowplaying", djh.NowPlaying)
+	api.Get("/mounts/:name/sync", (&handler.Sync{DJManager: djm, Scanner: scanner, Mounts: mounts, Playlists: playlists}).Get)
 	api.Get("/autodj/sessions", djh.Sessions)
 
 	// WHEP: WebRTC HTTP Egress — POST SDP offer, receive SDP answer.
@@ -361,6 +362,7 @@ func NewApp(
 	})
 
 	api.Get("/library", lh.List)
+	api.Get("/library/:id/download", lh.Download)
 	api.Patch("/library/:id", lh.Update)
 	api.Delete("/library/:id/override", lh.ResetOverride)
 	api.Post("/library/scan", lh.Scan)

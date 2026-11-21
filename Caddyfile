@@ -1,0 +1,41 @@
+# Caddy reverse proxy for Kast — terminates HTTPS with automatic Let's Encrypt
+# certificates and forwards traffic to the server and dashboard containers.
+#
+# Domains come from .env (KAST_API_DOMAIN, KAST_DASHBOARD_DOMAIN). Both need a
+# DNS A record pointing at this host, and ports 80 + 443 must be reachable from
+# the internet for certificate issuance.
+#
+# Caddy sets X-Forwarded-For / X-Forwarded-Proto automatically, so keep
+# KAST_TRUST_PROXY=true on the server.
+
+{
+	# Optional: uncomment to get certificate expiry notices from Let's Encrypt.
+	# email {$ACME_EMAIL}
+}
+
+# Kast server — REST API, Icecast-style listener streams, HLS, WHEP signalling.
+# This is the URL your Android app talks to; set KAST_PUBLIC_URL=https://<this domain>.
+{$KAST_API_DOMAIN} {
+	encode {
+		gzip
+		# Don't compress audio streams / HLS segments — already compressed,
+		# and compression would buffer the live stream.
+		match {
+			header Content-Type application/json*
+			header Content-Type text/*
+			header Content-Type application/vnd.apple.mpegurl*
+			header Content-Type application/x-mpegurl*
+		}
+	}
+
+	reverse_proxy server:8080 {
+		# Push bytes to clients immediately — required for live audio streams.
+		flush_interval -1
+	}
+}
+
+# Next.js dashboard (it proxies /api/* and /hls/* to the server internally).
+{$KAST_DASHBOARD_DOMAIN} {
+	encode gzip zstd
+	reverse_proxy dashboard:3000
+}

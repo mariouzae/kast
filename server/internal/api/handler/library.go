@@ -156,6 +156,21 @@ func (h *Library) Update(c *fiber.Ctx) error {
 	return respond.OK(c, track)
 }
 
+// Download godoc: GET /api/library/:id/download
+// Streams the track's audio file as an attachment. Supports HTTP Range requests.
+func (h *Library) Download(c *fiber.Ctx) error {
+	track := findTrack(h.Scanner, c.Params("id"))
+	if track == nil {
+		return respond.Error(c, fiber.StatusNotFound, "track not found")
+	}
+	info, err := os.Stat(track.Path)
+	if err != nil || !info.Mode().IsRegular() {
+		slog.Warn("library: download: file missing", "id", track.ID, "path", track.Path, "err", err)
+		return respond.Error(c, fiber.StatusNotFound, "track file not found")
+	}
+	return c.Download(track.Path, filepath.Base(track.Path))
+}
+
 // ResetOverride godoc: DELETE /api/library/:id/override
 // Removes any stored metadata override, restoring the file's ID3 values.
 func (h *Library) ResetOverride(c *fiber.Ctx) error {
@@ -176,4 +191,14 @@ func (h *Library) Scan(c *fiber.Ctx) error {
 		}
 	}()
 	return respond.OK(c, fiber.Map{"status": "scan started"})
+}
+
+// findTrack returns the library track with the given ID, or nil.
+func findTrack(s *library.Scanner, id string) *library.Track {
+	for _, t := range s.Tracks() {
+		if t.ID == id {
+			return t
+		}
+	}
+	return nil
 }

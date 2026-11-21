@@ -218,6 +218,7 @@ export type StartAutoDJBody = {
 export type APIAutoDJSession = {
   mount:       string
   playlist_id: string
+  mode?:       "sequential" | "shuffle"
 }
 
 export type APIAutoDJTrackInfo = {

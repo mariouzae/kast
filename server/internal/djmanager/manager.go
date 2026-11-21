@@ -300,7 +300,7 @@ func (m *Manager) GetSession(mountName string) *SessionInfo {
 	if !ok {
 		return nil
 	}
-	return &SessionInfo{Mount: mountName, PlaylistID: sess.playlistID}
+	return &SessionInfo{Mount: mountName, PlaylistID: sess.playlistID, Mode: sess.mode}
 }
 
 // ListSessions returns info for all active AutoDJ sessions.
@@ -309,7 +309,7 @@ func (m *Manager) ListSessions() []*SessionInfo {
 	defer m.mu.Unlock()
 	out := make([]*SessionInfo, 0, len(m.sessions))
 	for mountName, sess := range m.sessions {
-		out = append(out, &SessionInfo{Mount: mountName, PlaylistID: sess.playlistID})
+		out = append(out, &SessionInfo{Mount: mountName, PlaylistID: sess.playlistID, Mode: sess.mode})
 	}
 	return out
 }
