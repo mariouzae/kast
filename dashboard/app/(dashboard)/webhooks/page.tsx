@@ -5,6 +5,7 @@ import {
   Webhook, Plus, Pencil, Trash2, Lock, Eye, EyeOff, Check, X,
 } from "lucide-react"
 import { toast } from "sonner"
+import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import { api, type APIWebhook, type CreateWebhookBody, type UpdateWebhookBody } from "@/lib/api"
 import { Switch } from "@/components/ui/switch"
@@ -67,10 +68,11 @@ function eventLabel(e: string): string {
 // ── Event badges ─────────────────────────────────────────────────────────────
 
 function EventBadges({ events }: { events: string[] }) {
+  const { t } = useI18n()
   if (events.length === 0) {
     return (
       <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10.5px] font-mono bg-k-500/15 text-k-400 border border-k-500/25">
-        all events
+        {t("all events")}
       </span>
     )
   }
@@ -136,6 +138,7 @@ function WebhookDialog({
   const [form,    setForm]    = React.useState<WebhookFormState>(() => defaultForm(existing))
   const [saving,  setSaving]  = React.useState(false)
   const [showKey, setShowKey] = React.useState(false)
+  const { t } = useI18n()
 
   React.useEffect(() => {
     if (open) {
@@ -167,7 +170,7 @@ function WebhookDialog({
 
   async function handleSave() {
     if (!form.url.trim()) {
-      toast.error("URL is required")
+      toast.error(t("URL is required"))
       return
     }
     setSaving(true)
@@ -183,11 +186,11 @@ function WebhookDialog({
         if (form.secret) body.secret = form.secret
         wh = await api.webhooks.create(body)
       }
-      toast.success(existing ? "Webhook updated" : "Webhook created")
+      toast.success(existing ? t("Webhook updated") : t("Webhook created"))
       onSaved(wh)
       onClose()
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Save failed")
+      toast.error(e instanceof Error ? e.message : t("Save failed"))
     } finally {
       setSaving(false)
     }
@@ -195,17 +198,17 @@ function WebhookDialog({
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-lg bg-ink-950 border-ink-800 text-ink-100">
+      <DialogContent className="sm:max-w-lg bg-ink-950 border-ink-800 text-ink-100">
         <DialogHeader>
           <DialogTitle className="text-[15px] font-semibold">
-            {existing ? "Edit webhook" : "Add webhook"}
+            {existing ? t("Edit webhook") : t("Add webhook")}
           </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-5 py-1">
           {/* URL */}
           <div className="space-y-1.5">
-            <Label className="text-[12px] text-ink-400 font-mono">Endpoint URL</Label>
+            <Label className="text-[12px] text-ink-400 font-mono">{t("Endpoint URL")}</Label>
             <Input
               value={form.url}
               onChange={e => setForm(f => ({ ...f, url: e.target.value }))}
@@ -217,15 +220,15 @@ function WebhookDialog({
           {/* Signing secret */}
           <div className="space-y-1.5">
             <Label className="text-[12px] text-ink-400 font-mono">
-              Signing secret{" "}
-              <span className="text-ink-600">(optional)</span>
+              {t("Signing secret")}{" "}
+              <span className="text-ink-600">{t("(optional)")}</span>
             </Label>
             <div className="relative">
               <Input
                 type={showKey ? "text" : "password"}
                 value={form.secret}
                 onChange={e => setForm(f => ({ ...f, secret: e.target.value }))}
-                placeholder={existing?.secret ? "Leave blank to keep current" : "Used for X-Kast-Signature header"}
+                placeholder={existing?.secret ? t("Leave blank to keep current") : t("Used for X-Kast-Signature header")}
                 className="font-mono text-[13px] bg-ink-900 border-ink-700 text-ink-100 placeholder:text-ink-600 pr-9"
               />
               <button
@@ -241,9 +244,9 @@ function WebhookDialog({
           {/* Events */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label className="text-[12px] text-ink-400 font-mono">Events</Label>
+              <Label className="text-[12px] text-ink-400 font-mono">{t("Events")}</Label>
               <label className="flex items-center gap-2 cursor-pointer select-none">
-                <span className="text-[11.5px] text-ink-500 font-mono">All events</span>
+                <span className="text-[11.5px] text-ink-500 font-mono">{t("All events")}</span>
                 <Switch
                   checked={form.allEvents}
                   onCheckedChange={v => setForm(f => ({ ...f, allEvents: v }))}
@@ -271,7 +274,7 @@ function WebhookDialog({
                           onCheckedChange={() => toggleGroup(group)}
                         />
                         <span className="text-[11.5px] font-semibold text-ink-300 uppercase tracking-wider font-mono">
-                          {group.label}
+                          {t(group.label)}
                         </span>
                       </label>
                       <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 pl-[26px]">
@@ -296,8 +299,8 @@ function WebhookDialog({
           {/* Enabled */}
           <div className="flex items-center justify-between rounded-lg border border-ink-800 bg-ink-900/30 px-3 py-2.5">
             <div>
-              <p className="text-[12.5px] font-medium text-ink-200">Enabled</p>
-              <p className="text-[11px] text-ink-500">Disabled webhooks receive no events</p>
+              <p className="text-[12.5px] font-medium text-ink-200">{t("Enabled")}</p>
+              <p className="text-[11px] text-ink-500">{t("Disabled webhooks receive no events")}</p>
             </div>
             <Switch
               checked={form.enabled}
@@ -311,7 +314,7 @@ function WebhookDialog({
             onClick={onClose}
             className="px-3 py-1.5 text-[12.5px] text-ink-400 hover:text-ink-200 transition-colors"
           >
-            Cancel
+            {t("Cancel")}
           </button>
           <button
             onClick={handleSave}
@@ -323,7 +326,7 @@ function WebhookDialog({
             ) : (
               <Check className="h-3.5 w-3.5" />
             )}
-            {existing ? "Save changes" : "Create webhook"}
+            {existing ? t("Save changes") : t("Create webhook")}
           </button>
         </DialogFooter>
       </DialogContent>
@@ -344,6 +347,7 @@ function WebhookRow({
   onEdit:   (wh: APIWebhook) => void
   onDelete: (wh: APIWebhook) => void
 }) {
+  const { t } = useI18n()
   return (
     <div className="grid grid-cols-[1fr_minmax(0,2fr)_80px_80px] gap-4 px-4 py-3.5 items-center border-b border-ink-800/60 last:border-0">
       {/* URL */}
@@ -362,7 +366,7 @@ function WebhookRow({
             {shortUrl(wh.url)}
           </span>
           {wh.secret && (
-            <span title="Has signing secret">
+            <span title={t("Has signing secret")}>
               <Lock className="h-3 w-3 shrink-0 text-ink-600" />
             </span>
           )}
@@ -386,14 +390,14 @@ function WebhookRow({
       <div className="flex items-center justify-end gap-1">
         <button
           onClick={() => onEdit(wh)}
-          title="Edit"
+          title={t("Edit")}
           className="h-7 w-7 rounded hover:bg-ink-800 text-ink-500 hover:text-ink-200 flex items-center justify-center transition-colors"
         >
           <Pencil className="h-3.5 w-3.5" />
         </button>
         <button
           onClick={() => onDelete(wh)}
-          title="Delete"
+          title={t("Delete")}
           className="h-7 w-7 rounded hover:bg-red-500/10 text-ink-500 hover:text-red-400 flex items-center justify-center transition-colors"
         >
           <Trash2 className="h-3.5 w-3.5" />
@@ -412,6 +416,7 @@ export default function WebhooksPage() {
   const [editTarget,   setEditTarget]   = React.useState<APIWebhook | undefined>()
   const [deleteTarget, setDeleteTarget] = React.useState<APIWebhook | undefined>()
   const [deleting,     setDeleting]     = React.useState(false)
+  const { t, tn, tx } = useI18n()
 
   async function load() {
     try {
@@ -419,7 +424,7 @@ export default function WebhooksPage() {
       setWebhooks(whs ?? [])
       setError(null)
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to load webhooks")
+      setError(e instanceof Error ? e.message : t("Failed to load webhooks"))
     }
   }
 
@@ -451,7 +456,7 @@ export default function WebhooksPage() {
       const updated = await api.webhooks.update(wh.id, { enabled: !wh.enabled })
       setWebhooks(prev => prev?.map(w => w.id === updated.id ? updated : w) ?? [])
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Update failed")
+      toast.error(e instanceof Error ? e.message : t("Update failed"))
     }
   }
 
@@ -461,9 +466,9 @@ export default function WebhooksPage() {
     try {
       await api.webhooks.delete(deleteTarget.id)
       setWebhooks(prev => prev?.filter(w => w.id !== deleteTarget.id) ?? [])
-      toast.success("Webhook deleted")
+      toast.success(t("Webhook deleted"))
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Delete failed")
+      toast.error(e instanceof Error ? e.message : t("Delete failed"))
     } finally {
       setDeleting(false)
       setDeleteTarget(undefined)
@@ -477,11 +482,11 @@ export default function WebhooksPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-[24px] font-bold tracking-tight text-ink-100">Webhooks</h1>
+          <h1 className="text-[24px] font-bold tracking-tight text-ink-100">{t("Webhooks")}</h1>
           <p className="mt-1 text-[12.5px] text-ink-400">
             {webhooks !== null
-              ? `${webhooks.length} endpoint${webhooks.length !== 1 ? "s" : ""} configured`
-              : "HTTP event delivery to external endpoints"}
+              ? tn(webhooks.length, "{n} endpoint configured", "{n} endpoints configured")
+              : t("HTTP event delivery to external endpoints")}
           </p>
         </div>
         <button
@@ -489,7 +494,7 @@ export default function WebhooksPage() {
           className="flex items-center gap-1.5 px-3 py-1.5 text-[12.5px] font-medium bg-k-500 text-white hover:bg-k-600 transition-colors shrink-0"
         >
           <Plus className="h-3.5 w-3.5" />
-          Add webhook
+          {t("Add webhook")}
         </button>
       </div>
 
@@ -511,16 +516,16 @@ export default function WebhooksPage() {
       {!isLoading && webhooks?.length === 0 && (
         <div className="border-t border-ink-800 flex flex-col items-center gap-3 py-16">
           <Webhook className="h-10 w-10 text-ink-700" />
-          <p className="text-[13px] text-ink-500">No webhooks configured</p>
+          <p className="text-[13px] text-ink-500">{t("No webhooks configured")}</p>
           <p className="text-[12px] text-ink-600 text-center max-w-sm">
-            Webhooks deliver real-time POST requests to your endpoints when events occur — mount status changes, track changes, listener updates, and more.
+            {t("Webhooks deliver real-time POST requests to your endpoints when events occur — mount status changes, track changes, listener updates, and more.")}
           </p>
           <button
             onClick={openCreate}
             className="mt-1 flex items-center gap-1.5 px-3 py-1.5 rounded text-[12.5px] font-medium border border-ink-700 text-ink-300 hover:border-ink-500 hover:text-ink-100 transition-colors"
           >
             <Plus className="h-3.5 w-3.5" />
-            Add your first webhook
+            {t("Add your first webhook")}
           </button>
         </div>
       )}
@@ -530,9 +535,9 @@ export default function WebhooksPage() {
         <div className="border border-ink-800 rounded-lg overflow-hidden">
           {/* Column headers */}
           <div className="grid grid-cols-[1fr_minmax(0,2fr)_80px_80px] gap-4 px-4 py-2 bg-ink-900/60 border-b border-ink-800 text-[10.5px] uppercase tracking-wider text-ink-500 font-mono">
-            <div>Endpoint</div>
-            <div>Events</div>
-            <div className="text-center">Active</div>
+            <div>{t("Endpoint")}</div>
+            <div>{t("Events")}</div>
+            <div className="text-center">{t("Active")}</div>
             <div />
           </div>
           {webhooks.map(wh => (
@@ -550,11 +555,16 @@ export default function WebhooksPage() {
       {/* Info strip */}
       {!isLoading && webhooks !== null && (
         <div className="mt-8 rounded-lg border border-ink-800/60 bg-ink-900/30 px-4 py-3.5 space-y-2">
-          <p className="text-[11.5px] font-semibold text-ink-400 font-mono uppercase tracking-wider">Delivery details</p>
+          <p className="text-[11.5px] font-semibold text-ink-400 font-mono uppercase tracking-wider">{t("Delivery details")}</p>
           <div className="space-y-1 text-[12px] text-ink-500">
-            <p>Each event is sent as a <span className="font-mono text-ink-400">POST</span> with a JSON body: <span className="font-mono text-ink-400">{"{ id, event, timestamp, data }"}</span></p>
-            <p>If a signing secret is set, a <span className="font-mono text-ink-400">X-Kast-Signature: sha256=…</span> header is included for verification.</p>
-            <p>Events with empty filter receive all 12 event types. Delivery is async with a 10 s timeout.</p>
+            <p>{tx("Each event is sent as a {method} with a JSON body: {body}", {
+              method: <span className="font-mono text-ink-400">POST</span>,
+              body:   <span className="font-mono text-ink-400">{"{ id, event, timestamp, data }"}</span>,
+            })}</p>
+            <p>{tx("If a signing secret is set, a {header} header is included for verification.", {
+              header: <span className="font-mono text-ink-400">X-Kast-Signature: sha256=…</span>,
+            })}</p>
+            <p>{t("Events with empty filter receive all 12 event types. Delivery is async with a 10 s timeout.")}</p>
           </div>
         </div>
       )}
@@ -571,16 +581,16 @@ export default function WebhooksPage() {
       <AlertDialog open={!!deleteTarget} onOpenChange={v => !v && setDeleteTarget(undefined)}>
         <AlertDialogContent className="bg-ink-950 border-ink-800 text-ink-100">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-[15px]">Delete webhook?</AlertDialogTitle>
+            <AlertDialogTitle className="text-[15px]">{t("Delete webhook?")}</AlertDialogTitle>
             <AlertDialogDescription className="text-ink-400 text-[12.5px]">
               <span className="font-mono text-ink-300">{deleteTarget?.url}</span>
               <br />
-              This endpoint will stop receiving events immediately. This cannot be undone.
+              {t("This endpoint will stop receiving events immediately. This cannot be undone.")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="bg-transparent border-ink-700 text-ink-300 hover:bg-ink-800 hover:text-ink-100 text-[12.5px]">
-              Cancel
+              {t("Cancel")}
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
@@ -591,7 +601,7 @@ export default function WebhooksPage() {
                 ? <span className="h-3.5 w-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
                 : <X className="h-3.5 w-3.5" />
               }
-              Delete
+              {t("Delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -17,6 +17,7 @@ import { toast } from "sonner"
 import { api, type APISettings } from "@/lib/api"
 import { SettingsContext } from "@/app/(dashboard)/layout"
 import { ChevronsUpDown } from "lucide-react"
+import { useI18n, LANGUAGES, type Lang } from "@/lib/i18n"
 
 // ── Design primitives ──
 
@@ -86,24 +87,27 @@ function Section({ children }: { children: React.ReactNode }) {
 }
 
 function SaveBtn({ onClick, saving }: { onClick: () => void; saving?: boolean }) {
+  const { t } = useI18n()
   return (
     <button onClick={onClick} disabled={saving}
       className="h-9 px-4 bg-k-500 hover:bg-k-400 disabled:opacity-50 text-white text-[13px] font-semibold transition-colors">
-      {saving ? "Saving…" : "Save"}
+      {saving ? t("Saving…") : t("Save")}
     </button>
   )
 }
 
 function RestartNote() {
+  const { t } = useI18n()
   return (
     <p className="text-[11px] text-ink-600 mt-1">
-      Restart the server for this change to take effect.
+      {t("Restart the server for this change to take effect.")}
     </p>
   )
 }
 
 function TimezoneCombobox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [open, setOpen] = React.useState(false)
+  const { t } = useI18n()
   const zones = React.useMemo(() =>
     typeof Intl !== "undefined" && "supportedValuesOf" in Intl
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -120,9 +124,9 @@ function TimezoneCombobox({ value, onChange }: { value: string; onChange: (v: st
       </PopoverTrigger>
       <PopoverContent className="w-[320px] p-0" align="start">
         <Command>
-          <CommandInput placeholder="Search timezone…" />
+          <CommandInput placeholder={t("Search timezone…")} />
           <CommandList>
-            <CommandEmpty>No timezone found.</CommandEmpty>
+            <CommandEmpty>{t("No timezone found.")}</CommandEmpty>
             <CommandGroup>
               {zones.map((tz) => (
                 <CommandItem key={tz} value={tz} onSelect={() => { onChange(tz); setOpen(false) }}>
@@ -143,6 +147,7 @@ const TABS = [
   { id: "server",    label: "Server" },
   { id: "streaming", label: "Streaming" },
   { id: "logging",   label: "Logging" },
+  { id: "others",    label: "Others" },
   { id: "danger",    label: "Danger" },
 ] as const
 
@@ -170,6 +175,7 @@ const DEFAULT: APISettings = {
 
 export default function SettingsPage() {
   const { refresh: refreshSettings } = React.useContext(SettingsContext)
+  const { t, tx, lang, setLang } = useI18n()
   const [tab, setTab]         = React.useState<TabId>("server")
   const [cfg, setCfg]         = React.useState<APISettings>(DEFAULT)
   const [loading, setLoading] = React.useState(true)
@@ -184,7 +190,7 @@ export default function SettingsPage() {
   React.useEffect(() => {
     api.settings.get()
       .then((s) => setCfg(s))
-      .catch(() => toast.error("Failed to load settings"))
+      .catch(() => toast.error(t("Failed to load settings")))
       .finally(() => setLoading(false))
   }, [])
 
@@ -194,9 +200,9 @@ export default function SettingsPage() {
       const updated = await api.settings.update(cfg)
       setCfg(updated)
       refreshSettings()
-      toast.success("Settings saved")
+      toast.success(t("Settings saved"))
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Save failed")
+      toast.error(e instanceof Error ? e.message : t("Save failed"))
     } finally {
       setSaving(false)
     }
@@ -210,10 +216,10 @@ export default function SettingsPage() {
     setRestarting(true)
     try {
       await api.server.restart()
-      toast.success("Server restarting — page will reload shortly…")
+      toast.success(t("Server restarting — page will reload shortly…"))
       setTimeout(() => window.location.reload(), 5000)
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to restart server")
+      toast.error(e instanceof Error ? e.message : t("Failed to restart server"))
       setRestarting(false)
     }
   }
@@ -223,10 +229,10 @@ export default function SettingsPage() {
     setResetInput("")
     try {
       await api.server.factoryReset()
-      toast.success("Factory reset initiated — redirecting…")
+      toast.success(t("Factory reset initiated — redirecting…"))
       setTimeout(() => { window.location.href = "/login" }, 3000)
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Factory reset failed")
+      toast.error(e instanceof Error ? e.message : t("Factory reset failed"))
     }
   }
 
@@ -234,8 +240,8 @@ export default function SettingsPage() {
     return (
       <div>
         <div className="mb-8">
-          <h1 className="text-[24px] font-bold tracking-tight text-ink-100">Settings</h1>
-          <p className="mt-1 text-[12.5px] text-ink-400">Global server configuration</p>
+          <h1 className="text-[24px] font-bold tracking-tight text-ink-100">{t("Settings")}</h1>
+          <p className="mt-1 text-[12.5px] text-ink-400">{t("Global server configuration")}</p>
         </div>
         <div className="flex items-center justify-center py-20">
           <div className="h-6 w-6 rounded-full border-2 border-ink-800 border-t-k-500 animate-spin" />
@@ -247,25 +253,25 @@ export default function SettingsPage() {
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-[24px] font-bold tracking-tight text-ink-100">Settings</h1>
-        <p className="mt-1 text-[12.5px] text-ink-400">Global server configuration</p>
+        <h1 className="text-[24px] font-bold tracking-tight text-ink-100">{t("Settings")}</h1>
+        <p className="mt-1 text-[12.5px] text-ink-400">{t("Global server configuration")}</p>
       </div>
 
       {/* Tab bar */}
       <div className="flex border-b border-ink-800 mb-8 gap-0.5">
-        {TABS.map((t) => (
-          <button key={t.id} onClick={() => setTab(t.id)}
+        {TABS.map((tb) => (
+          <button key={tb.id} onClick={() => setTab(tb.id)}
             className={cn(
               "px-4 py-2.5 text-[13px] font-medium transition-colors border-b-2 -mb-px",
-              tab === t.id
-                ? t.id === "danger"
+              tab === tb.id
+                ? tb.id === "danger"
                   ? "border-red-500 text-red-400"
                   : "border-k-500 text-ink-100"
-                : t.id === "danger"
+                : tb.id === "danger"
                   ? "border-transparent text-red-400/60 hover:text-red-400"
                   : "border-transparent text-ink-500 hover:text-ink-200"
             )}>
-            {t.label}
+            {t(tb.label)}
           </button>
         ))}
       </div>
@@ -274,29 +280,29 @@ export default function SettingsPage() {
       {tab === "server" && (
         <div className="max-w-xl space-y-0">
           <Section>
-            <SectionLabel>Identity</SectionLabel>
+            <SectionLabel>{t("Identity")}</SectionLabel>
             <FieldGroup>
-              <Field label="Public Base URL"
-                hint="Used for player embed links, webhook callbacks, and SSL certificate requests.">
+              <Field label={t("Public Base URL")}
+                hint={t("Used for player embed links, webhook callbacks, and SSL certificate requests.")}>
                 <KInput value={cfg.public_url} onChange={(v) => set("public_url", v)}
                   placeholder="https://stream.example.com" monospace />
               </Field>
-              <Field label="Timezone"
-                hint="IANA timezone for time displays in this dashboard (e.g. Europe/Istanbul, America/New_York).">
+              <Field label={t("Timezone")}
+                hint={t("IANA timezone for time displays in this dashboard (e.g. Europe/Istanbul, America/New_York).")}>
                 <TimezoneCombobox value={cfg.timezone} onChange={(v) => set("timezone", v)} />
               </Field>
             </FieldGroup>
           </Section>
 
           <Section>
-            <SectionLabel>Network</SectionLabel>
+            <SectionLabel>{t("Network")}</SectionLabel>
             <FieldGroup>
-              <Field label="HTTP Listen Address" hint="Format: :8080 or 0.0.0.0:8080">
+              <Field label={t("HTTP Listen Address")} hint={t("Format: :8080 or 0.0.0.0:8080")}>
                 <KInput value={cfg.http_addr} onChange={(v) => set("http_addr", v)}
                   monospace placeholder=":8080" />
                 <RestartNote />
               </Field>
-              <Field label="CORS Origins" hint="One origin per line, or * for all">
+              <Field label={t("CORS Origins")} hint={t("One origin per line, or * for all")}>
                 <textarea
                   className="h-20 w-full bg-ink-950 border border-ink-800 rounded-md px-3 py-2 text-[12px] text-ink-100 placeholder:text-ink-600 font-mono focus:border-k-500/50 focus:outline-none resize-none"
                   value={(cfg.cors_origins ?? []).join("\n")}
@@ -304,8 +310,8 @@ export default function SettingsPage() {
                 />
               </Field>
               <Row
-                label="Trust Proxy"
-                description="Read real client IPs from X-Forwarded-For. Enable when running behind a reverse proxy (nginx, Caddy, Traefik) or in Docker. Leave off for direct deployments."
+                label={t("Trust Proxy")}
+                description={t("Read real client IPs from X-Forwarded-For. Enable when running behind a reverse proxy (nginx, Caddy, Traefik) or in Docker. Leave off for direct deployments.")}
               >
                 <Toggle checked={cfg.trust_proxy ?? false} onCheckedChange={(v) => set("trust_proxy", v)} />
               </Row>
@@ -315,27 +321,27 @@ export default function SettingsPage() {
           <Section>
             <SectionLabel>SSL / TLS</SectionLabel>
             <FieldGroup>
-              <Row label="Enable SSL" description="Serve HTTPS. Requires restart.">
+              <Row label={t("Enable SSL")} description={t("Serve HTTPS. Requires restart.")}>
                 <Toggle checked={cfg.ssl_enabled} onCheckedChange={(v) => set("ssl_enabled", v)} />
               </Row>
               {cfg.ssl_enabled && (
                 <>
-                  <Row label="Auto Certificate" description="Obtain a free cert via Let's Encrypt.">
+                  <Row label={t("Auto Certificate")} description={t("Obtain a free cert via Let's Encrypt.")}>
                     <Toggle checked={cfg.ssl_auto_cert} onCheckedChange={(v) => set("ssl_auto_cert", v)} />
                   </Row>
                   {cfg.ssl_auto_cert ? (
-                    <Field label="Domains" hint="Space-separated list of domains for the certificate.">
+                    <Field label={t("Domains")} hint={t("Space-separated list of domains for the certificate.")}>
                       <KInput value={(cfg.ssl_domains ?? []).join(" ")}
                         onChange={(v) => set("ssl_domains", v.split(/\s+/).filter(Boolean))}
                         monospace placeholder="stream.example.com www.example.com" />
                     </Field>
                   ) : (
                     <div className="grid grid-cols-2 gap-3">
-                      <Field label="Certificate File">
+                      <Field label={t("Certificate File")}>
                         <KInput value={cfg.ssl_cert_file} onChange={(v) => set("ssl_cert_file", v)}
                           monospace placeholder="/etc/ssl/server.crt" />
                       </Field>
-                      <Field label="Key File">
+                      <Field label={t("Key File")}>
                         <KInput value={cfg.ssl_key_file} onChange={(v) => set("ssl_key_file", v)}
                           monospace placeholder="/etc/ssl/server.key" />
                       </Field>
@@ -359,13 +365,13 @@ export default function SettingsPage() {
             <SectionLabel>HLS</SectionLabel>
             <FieldGroup>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Segment Duration (s)"
-                  hint="Length of each HLS segment in seconds.">
+                <Field label={t("Segment Duration (s)")}
+                  hint={t("Length of each HLS segment in seconds.")}>
                   <KInput type="number" value={String(cfg.hls_segment_duration)}
                     onChange={(v) => set("hls_segment_duration", Number(v))} />
                 </Field>
-                <Field label="Playlist Size"
-                  hint="Number of segments kept in the playlist.">
+                <Field label={t("Playlist Size")}
+                  hint={t("Number of segments kept in the playlist.")}>
                   <KInput type="number" value={String(cfg.hls_playlist_size)}
                     onChange={(v) => set("hls_playlist_size", Number(v))} />
                 </Field>
@@ -384,10 +390,10 @@ export default function SettingsPage() {
       {tab === "logging" && (
         <div className="max-w-xl">
           <Section>
-            <SectionLabel>Log Output</SectionLabel>
+            <SectionLabel>{t("Log Output")}</SectionLabel>
             <FieldGroup>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Log Level">
+                <Field label={t("Log Level")}>
                   <Select value={cfg.log_level} onValueChange={(v) => set("log_level", v as APISettings["log_level"])}>
                     <SelectTrigger className="h-8 bg-ink-950 border-ink-800 text-ink-100 text-[12.5px]">
                       <SelectValue />
@@ -399,13 +405,13 @@ export default function SettingsPage() {
                     </SelectContent>
                   </Select>
                 </Field>
-                <Field label="Log Format">
+                <Field label={t("Log Format")}>
                   <Select value={cfg.log_format} onValueChange={(v) => set("log_format", v as APISettings["log_format"])}>
                     <SelectTrigger className="h-8 bg-ink-950 border-ink-800 text-ink-100 text-[12.5px]">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="text">text</SelectItem>
+                      <SelectItem value="text">{t("text")}</SelectItem>
                       <SelectItem value="json">JSON</SelectItem>
                     </SelectContent>
                   </Select>
@@ -420,31 +426,57 @@ export default function SettingsPage() {
         </div>
       )}
 
+      {/* ── Others ── */}
+      {tab === "others" && (
+        <div className="max-w-xl">
+          <Section>
+            <SectionLabel>{t("Language")}</SectionLabel>
+            <FieldGroup>
+              <Field
+                label={t("Dashboard language")}
+                hint={t("Changes only the dashboard text. Saved in this browser and applied immediately.")}
+              >
+                <Select value={lang} onValueChange={(v) => setLang(v as Lang)}>
+                  <SelectTrigger className="h-8 bg-ink-950 border-ink-800 text-ink-100 text-[12.5px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {LANGUAGES.map((l) => (
+                      <SelectItem key={l.code} value={l.code}>{l.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            </FieldGroup>
+          </Section>
+        </div>
+      )}
+
       {/* ── Danger ── */}
       {tab === "danger" && (
         <div className="max-w-xl">
           <div className="rounded-lg border border-red-500/20 bg-red-500/5 overflow-hidden">
             <div className="px-5 py-4 border-b border-red-500/10">
-              <h3 className="text-[13px] font-semibold text-red-400">Danger Zone</h3>
-              <p className="text-[12px] text-ink-500 mt-0.5">Irreversible server actions. Proceed with extreme caution.</p>
+              <h3 className="text-[13px] font-semibold text-red-400">{t("Danger Zone")}</h3>
+              <p className="text-[12px] text-ink-500 mt-0.5">{t("Irreversible server actions. Proceed with extreme caution.")}</p>
             </div>
 
             <div className="px-5 py-4 border-b border-red-500/10">
-              <Row label="Restart Server" description="Gracefully restarts Kast. Active streams will be interrupted briefly.">
+              <Row label={t("Restart Server")} description={t("Gracefully restarts Kast. Active streams will be interrupted briefly.")}>
                 <button
                   onClick={() => setRestartOpen(true)}
                   disabled={restarting}
                   className="h-8 px-3 rounded-md border border-ink-800 hover:bg-ink-800 text-[12.5px] text-ink-200 transition-colors disabled:opacity-50">
-                  {restarting ? "Restarting…" : "Restart"}
+                  {restarting ? t("Restarting…") : t("Restart")}
                 </button>
               </Row>
             </div>
 
             <div className="px-5 py-4">
-              <Row label="Factory Reset" description="Wipe all configuration, keys, and recordings. This cannot be undone.">
+              <Row label={t("Factory Reset")} description={t("Wipe all configuration, keys, and recordings. This cannot be undone.")}>
                 <button onClick={() => setResetOpen(true)}
                   className="h-8 px-3 rounded-md bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-400 text-[12.5px] font-medium transition-colors">
-                  Factory Reset
+                  {t("Factory Reset")}
                 </button>
               </Row>
             </div>
@@ -456,12 +488,12 @@ export default function SettingsPage() {
       <AlertDialog open={restartOpen} onOpenChange={setRestartOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Restart server?</AlertDialogTitle>
-            <AlertDialogDescription>All active streams will be briefly interrupted. Listeners will reconnect automatically.</AlertDialogDescription>
+            <AlertDialogTitle>{t("Restart server?")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("All active streams will be briefly interrupted. Listeners will reconnect automatically.")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRestart}>Restart</AlertDialogAction>
+            <AlertDialogCancel>{t("Cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRestart}>{t("Restart")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -470,10 +502,11 @@ export default function SettingsPage() {
       <AlertDialog open={resetOpen} onOpenChange={setResetOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Factory reset Kast?</AlertDialogTitle>
+            <AlertDialogTitle>{t("Factory reset Kast?")}</AlertDialogTitle>
             <AlertDialogDescription>
-              All configuration, API keys, mount credentials, and recordings will be permanently deleted.
-              Type <strong>RESET</strong> to confirm.
+              {t("All configuration, API keys, mount credentials, and recordings will be permanently deleted.")}{" "}
+              {/* The confirmation word itself stays "RESET" in every language. */}
+              {tx("Type {word} to confirm.", { word: <strong>RESET</strong> })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <input
@@ -481,10 +514,10 @@ export default function SettingsPage() {
             value={resetInput} onChange={(e) => setResetInput(e.target.value)} placeholder="RESET"
           />
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setResetInput("")}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => setResetInput("")}>{t("Cancel")}</AlertDialogCancel>
             <AlertDialogAction variant="destructive" disabled={resetInput !== "RESET"}
               onClick={handleFactoryReset}>
-              Reset Everything
+              {t("Reset Everything")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

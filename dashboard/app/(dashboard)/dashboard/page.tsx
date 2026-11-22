@@ -4,6 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import { api, type APIStatus, type APIMount } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { useI18n } from "@/lib/i18n"
 
 const FE_COMMIT  = process.env.NEXT_PUBLIC_GIT_COMMIT ?? "unknown"
 const FE_VERSION = process.env.NEXT_PUBLIC_VERSION    ?? "dev"
@@ -19,6 +20,19 @@ function formatUptime(sec: number): string {
   return `${m}m`
 }
 
+function formatBytes(n: number): string {
+  const units = ["B", "KB", "MB", "GB", "TB", "PB"]
+  let i = 0
+  while (n >= 1024 && i < units.length - 1) { n /= 1024; i++ }
+  return `${n >= 100 || i === 0 ? n.toFixed(0) : n.toFixed(1)} ${units[i]}`
+}
+
+function usageColor(pct: number, text = true): string {
+  if (pct < 70) return text ? "text-emerald-400" : "bg-emerald-500"
+  if (pct < 90) return text ? "text-amber-400"   : "bg-amber-500"
+  return text ? "text-red-400" : "bg-red-500"
+}
+
 function PulseDot({ className }: { className?: string }) {
   return (
     <span
@@ -30,15 +44,16 @@ function PulseDot({ className }: { className?: string }) {
 // ── Build info ──
 
 function BuildInfo({ status }: { status: APIStatus }) {
+  const { t, tx } = useI18n()
   const serverCommit  = status.git_commit ?? "unknown"
   const match = serverCommit !== "unknown" && FE_COMMIT !== "unknown" && serverCommit === FE_COMMIT
 
   const rows = [
-    { label: "server",   value: `${status.version} · ${serverCommit}` },
-    { label: "dashboard", value: `${FE_VERSION} · ${FE_COMMIT}` },
-    { label: "runtime",  value: status.go_version },
-    { label: "uptime",   value: formatUptime(status.uptime_sec) },
-    { label: "platform", value: status.os_arch },
+    { label: t("server"),   value: `${status.version} · ${serverCommit}` },
+    { label: t("dashboard"), value: `${FE_VERSION} · ${FE_COMMIT}` },
+    { label: t("runtime"),  value: status.go_version },
+    { label: t("uptime"),   value: formatUptime(status.uptime_sec) },
+    { label: t("platform"), value: status.os_arch },
   ]
 
   return (
@@ -50,8 +65,11 @@ function BuildInfo({ status }: { status: APIStatus }) {
       )}>
         <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", match ? "bg-emerald-500" : "bg-amber-400")} />
         {match
-          ? <span>Server and dashboard are in sync <span className="text-ink-600">({serverCommit})</span></span>
-          : <span>Version mismatch — server <span className="text-ink-300">{serverCommit}</span> · dashboard <span className="text-ink-300">{FE_COMMIT}</span></span>
+          ? <span>{tx("Server and dashboard are in sync {commit}", { commit: <span className="text-ink-600">({serverCommit})</span> })}</span>
+          : <span>{tx("Version mismatch — server {server} · dashboard {dashboard}", {
+              server:    <span className="text-ink-300">{serverCommit}</span>,
+              dashboard: <span className="text-ink-300">{FE_COMMIT}</span>,
+            })}</span>
         }
       </div>
 
@@ -74,6 +92,7 @@ export default function OverviewPage() {
   const [apiStatus, setApiStatus] = React.useState<APIStatus | null>(null)
   const [apiMounts, setApiMounts] = React.useState<APIMount[] | null>(null)
   const [error, setError]         = React.useState<string | null>(null)
+  const { t } = useI18n()
 
   React.useEffect(() => {
     let alive = true
@@ -96,45 +115,45 @@ export default function OverviewPage() {
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-[24px] font-bold tracking-tight text-ink-100">Overview</h1>
-        <p className="text-[12.5px] text-ink-400 mt-1">Server status and active streams</p>
+        <h1 className="text-[24px] font-bold tracking-tight text-ink-100">{t("Overview")}</h1>
+        <p className="text-[12.5px] text-ink-400 mt-1">{t("Server status and active streams")}</p>
       </div>
 
       {/* Error */}
       {error && (
         <div className="mb-6 flex items-center gap-3 py-3 px-4 rounded-md border border-red-500/20 bg-red-500/5 text-[12.5px]">
-          <span className="text-red-400">Could not reach server:</span>
+          <span className="text-red-400">{t("Could not reach server:")}</span>
           <span className="text-ink-300">{error}</span>
-          <span className="ml-auto text-ink-500">Check API URL/key in Settings</span>
+          <span className="ml-auto text-ink-500">{t("Check API URL/key in Settings")}</span>
         </div>
       )}
 
       {/* Stat strip */}
       <div className="mt-8 grid grid-cols-3 gap-px bg-ink-800 border border-ink-800 rounded-lg overflow-hidden">
         <div className="bg-ink-950 px-5 py-4">
-          <div className="text-[11px] text-ink-500 font-mono uppercase tracking-wider">Active mounts</div>
+          <div className="text-[11px] text-ink-500 font-mono uppercase tracking-wider">{t("Active mounts")}</div>
           <div className="mt-1.5 flex items-baseline gap-2">
             <span className="text-[22px] font-bold text-ink-100">
               {apiMounts !== null ? liveMounts.length : "—"}
             </span>
             {apiMounts !== null && (
-              <span className="text-[11px] text-ink-500 font-mono">of {apiMounts.length}</span>
+              <span className="text-[11px] text-ink-500 font-mono">{t("of {n}", { n: apiMounts.length })}</span>
             )}
           </div>
         </div>
         <div className="bg-ink-950 px-5 py-4">
-          <div className="text-[11px] text-ink-500 font-mono uppercase tracking-wider">Total listeners</div>
+          <div className="text-[11px] text-ink-500 font-mono uppercase tracking-wider">{t("Total listeners")}</div>
           <div className="mt-1.5 flex items-baseline gap-2">
             <span className="text-[22px] font-bold text-ink-100">
               {apiMounts !== null ? totalListeners : "—"}
             </span>
             {totalListeners > 0 && (
-              <span className="text-[11px] text-emerald-400 font-mono">live</span>
+              <span className="text-[11px] text-emerald-400 font-mono">{t("live")}</span>
             )}
           </div>
         </div>
         <div className="bg-ink-950 px-5 py-4">
-          <div className="text-[11px] text-ink-500 font-mono uppercase tracking-wider">Uptime</div>
+          <div className="text-[11px] text-ink-500 font-mono uppercase tracking-wider">{t("Uptime")}</div>
           <div className="mt-1.5 flex items-baseline gap-2">
             <span className="text-[22px] font-bold text-ink-100">
               {apiStatus ? formatUptime(apiStatus.uptime_sec) : "—"}
@@ -166,7 +185,7 @@ export default function OverviewPage() {
         </div>
         {/* Memory */}
         <div className="bg-ink-950 px-5 py-4">
-          <div className="text-[11px] text-ink-500 font-mono uppercase tracking-wider">Memory</div>
+          <div className="text-[11px] text-ink-500 font-mono uppercase tracking-wider">{t("Memory")}</div>
           <div className="mt-1.5 flex items-baseline gap-2">
             <span className="text-[22px] font-bold text-ink-100">
               {apiStatus?.mem_rss_mb != null && apiStatus.mem_rss_mb >= 0
@@ -175,36 +194,63 @@ export default function OverviewPage() {
             </span>
           </div>
         </div>
+        {/* Disk — filesystem holding the data folder */}
+        <div className="bg-ink-950 px-5 py-4" title={apiStatus?.disk ? t("Filesystem of {path}", { path: apiStatus.disk.path }) : undefined}>
+          <div className="text-[11px] text-ink-500 font-mono uppercase tracking-wider">{t("Disk")}</div>
+          <div className="mt-1.5 flex items-baseline gap-2">
+            <span className={cn("text-[22px] font-bold", apiStatus?.disk ? usageColor(apiStatus.disk.used_percent) : "text-ink-100")}>
+              {apiStatus?.disk ? apiStatus.disk.used_percent.toFixed(0) + "%" : "—"}
+            </span>
+            {apiStatus?.disk && (
+              <span className="text-[11px] text-ink-500 font-mono">
+                {formatBytes(apiStatus.disk.used_bytes)} / {formatBytes(apiStatus.disk.total_bytes)}
+              </span>
+            )}
+          </div>
+          {apiStatus?.disk && (
+            <>
+              <div className="mt-2 h-1 w-full bg-ink-800 overflow-hidden">
+                <div
+                  className={cn("h-full", usageColor(apiStatus.disk.used_percent, false))}
+                  style={{ width: `${Math.min(100, apiStatus.disk.used_percent)}%` }}
+                />
+              </div>
+              <div className="mt-1.5 text-[11px] text-ink-500 font-mono">
+                {t("{size} free", { size: formatBytes(apiStatus.disk.free_bytes) })}
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Mounts */}
       <div className="mt-9">
         <div className="flex items-baseline justify-between mb-3">
-          <h2 className="text-[11px] font-medium text-ink-500 uppercase tracking-wider font-mono">Mounts</h2>
+          <h2 className="text-[11px] font-medium text-ink-500 uppercase tracking-wider font-mono">{t("Mounts")}</h2>
           <Link href="/mounts" className="text-[12px] text-k-400 hover:text-k-300 font-medium transition-colors">
-            View all →
+            {t("View all →")}
           </Link>
         </div>
 
         {apiMounts === null ? (
           <div className="border-t border-ink-800 py-8 flex items-center justify-center text-[12px] text-ink-500 font-mono">
-            Loading…
+            {t("Loading…")}
           </div>
         ) : apiMounts.length === 0 ? (
           <div className="border-t border-ink-800 py-8 flex flex-col items-center gap-2">
-            <p className="text-[12.5px] text-ink-500">No mounts yet</p>
+            <p className="text-[12.5px] text-ink-500">{t("No mounts yet")}</p>
             <Link href="/mounts" className="text-[12px] text-k-400 hover:text-k-300 transition-colors">
-              Create your first mount →
+              {t("Create your first mount →")}
             </Link>
           </div>
         ) : (
           <div className="border-t border-ink-800">
             {/* Column headers */}
             <div className="grid grid-cols-[minmax(0,1.4fr)_80px_130px_60px_28px] gap-3 px-1 py-2 text-[10.5px] uppercase tracking-wider text-ink-500 font-mono border-b border-ink-800">
-              <div>Mount</div>
-              <div>Protocol</div>
-              <div>Codec / Bitrate</div>
-              <div className="text-right">Lsnr</div>
+              <div>{t("Mount")}</div>
+              <div>{t("Protocol")}</div>
+              <div>{t("Codec / Bitrate")}</div>
+              <div className="text-right">{t("Lsnr")}</div>
               <div />
             </div>
             {apiMounts.map((mount, i) => (
@@ -253,7 +299,7 @@ export default function OverviewPage() {
       {/* Build info */}
       {apiStatus && (
         <div className="mt-9">
-          <h2 className="text-[11px] font-medium text-ink-500 uppercase tracking-wider font-mono mb-3">Build</h2>
+          <h2 className="text-[11px] font-medium text-ink-500 uppercase tracking-wider font-mono mb-3">{t("Build")}</h2>
           <BuildInfo status={apiStatus} />
         </div>
       )}

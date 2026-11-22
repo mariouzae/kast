@@ -49,5 +49,7 @@ export async function generateMetadata({
 }
 
 export default function ListenLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>
+  // The public player has its own look; keep it dark regardless of the
+  // dashboard theme a signed-in admin picked.
+  return <div className="dark contents">{children}</div>
 }

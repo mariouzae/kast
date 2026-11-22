@@ -5,6 +5,7 @@ import {
   CalendarClock, Plus, Pencil, Trash2, Check, X,
 } from "lucide-react"
 import { toast } from "sonner"
+import { useI18n, type TFunc } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import {
   api,
@@ -31,26 +32,30 @@ import {
 // The UI shows Mon-first for European readability but the bit math respects
 // the server convention.
 
-type Day = { bit: number; short: string; long: string }
+type Day = { bit: number; long: string }
 
+// `long` is the English key; the one-letter badge is the first letter of the
+// translated name (Sun→S / Dom→D), so it stays correct in every language.
 const DAYS: Day[] = [
-  { bit: 1, short: "S", long: "Sun" },
-  { bit: 2, short: "M", long: "Mon" },
-  { bit: 4, short: "T", long: "Tue" },
-  { bit: 8, short: "W", long: "Wed" },
-  { bit: 16, short: "T", long: "Thu" },
-  { bit: 32, short: "F", long: "Fri" },
-  { bit: 64, short: "S", long: "Sat" },
+  { bit: 1,  long: "Sun" },
+  { bit: 2,  long: "Mon" },
+  { bit: 4,  long: "Tue" },
+  { bit: 8,  long: "Wed" },
+  { bit: 16, long: "Thu" },
+  { bit: 32, long: "Fri" },
+  { bit: 64, long: "Sat" },
 ]
+
+const dayShort = (d: Day, t: TFunc) => t(d.long).charAt(0).toUpperCase()
 
 // Mon-Fri preset for the common "weekdays" case.
 const WEEKDAY_MASK = 0b00111110
 
-function daysMaskLabel(mask: number): string {
-  if (mask === 0x7F) return "Every day"
-  if (mask === WEEKDAY_MASK) return "Mon–Fri"
-  if (mask === 0b01000001) return "Weekends"
-  return DAYS.filter(d => mask & d.bit).map(d => d.long).join(", ")
+function daysMaskLabel(mask: number, t: TFunc): string {
+  if (mask === 0x7F) return t("Every day")
+  if (mask === WEEKDAY_MASK) return t("Mon–Fri")
+  if (mask === 0b01000001) return t("Weekends")
+  return DAYS.filter(d => mask & d.bit).map(d => t(d.long)).join(", ")
 }
 
 // ── Time helpers ──────────────────────────────────────────────────────────────
@@ -113,6 +118,7 @@ function ScheduleDialog({
 }) {
   const [form, setForm] = React.useState<FormState>(() => defaultForm(existing, mounts, playlists))
   const [saving, setSaving] = React.useState(false)
+  const { t } = useI18n()
 
   React.useEffect(() => {
     if (open) setForm(defaultForm(existing, mounts, playlists))
@@ -124,21 +130,21 @@ function ScheduleDialog({
 
   async function handleSave() {
     if (!form.name.trim()) {
-      toast.error("Name is required")
+      toast.error(t("Name is required"))
       return
     }
     if (!form.mount || !form.playlist) {
-      toast.error("Mount and playlist are required")
+      toast.error(t("Mount and playlist are required"))
       return
     }
     if (form.daysMask === 0) {
-      toast.error("Select at least one day")
+      toast.error(t("Select at least one day"))
       return
     }
     const startMin = hhmmToMinutes(form.start)
     const endMin = hhmmToMinutes(form.end)
     if (endMin <= startMin) {
-      toast.error("End time must be after start time (midnight crossing is not supported)")
+      toast.error(t("End time must be after start time (midnight crossing is not supported)"))
       return
     }
 
@@ -168,11 +174,11 @@ function ScheduleDialog({
         }
         saved = await api.schedules.create(body)
       }
-      toast.success(existing ? "Schedule updated" : "Schedule created")
+      toast.success(existing ? t("Schedule updated") : t("Schedule created"))
       onSaved(saved)
       onClose()
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Save failed")
+      toast.error(e instanceof Error ? e.message : t("Save failed"))
     } finally {
       setSaving(false)
     }
@@ -180,21 +186,21 @@ function ScheduleDialog({
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-lg bg-ink-950 border-ink-800 text-ink-100">
+      <DialogContent className="sm:max-w-lg bg-ink-950 border-ink-800 text-ink-100">
         <DialogHeader>
           <DialogTitle className="text-[15px] font-semibold">
-            {existing ? "Edit schedule" : "Add schedule"}
+            {existing ? t("Edit schedule") : t("Add schedule")}
           </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-5 py-1">
           {/* Name */}
           <div className="space-y-1.5">
-            <Label className="text-[12px] text-ink-400 font-mono">Name</Label>
+            <Label className="text-[12px] text-ink-400 font-mono">{t("Name")}</Label>
             <Input
               value={form.name}
               onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-              placeholder="Morning Mix"
+              placeholder={t("e.g. Morning Mix")}
               className="text-[13px] bg-ink-900 border-ink-700 text-ink-100 placeholder:text-ink-600"
             />
           </div>
@@ -202,10 +208,10 @@ function ScheduleDialog({
           {/* Mount + Playlist */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label className="text-[12px] text-ink-400 font-mono">Mount</Label>
+              <Label className="text-[12px] text-ink-400 font-mono">{t("Mount")}</Label>
               <Select value={form.mount} onValueChange={v => setForm(f => ({ ...f, mount: v }))}>
                 <SelectTrigger className="text-[13px] bg-ink-900 border-ink-700 text-ink-100">
-                  <SelectValue placeholder="Select mount" />
+                  <SelectValue placeholder={t("Select mount")} />
                 </SelectTrigger>
                 <SelectContent className="bg-ink-950 border-ink-800 text-ink-100">
                   {mounts.map(m => (
@@ -217,10 +223,10 @@ function ScheduleDialog({
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-[12px] text-ink-400 font-mono">Playlist</Label>
+              <Label className="text-[12px] text-ink-400 font-mono">{t("Playlist")}</Label>
               <Select value={form.playlist} onValueChange={v => setForm(f => ({ ...f, playlist: v }))}>
                 <SelectTrigger className="text-[13px] bg-ink-900 border-ink-700 text-ink-100">
-                  <SelectValue placeholder="Select playlist" />
+                  <SelectValue placeholder={t("Select playlist")} />
                 </SelectTrigger>
                 <SelectContent className="bg-ink-950 border-ink-800 text-ink-100">
                   {playlists.map(p => (
@@ -236,14 +242,14 @@ function ScheduleDialog({
           {/* Days */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <Label className="text-[12px] text-ink-400 font-mono">Days</Label>
+              <Label className="text-[12px] text-ink-400 font-mono">{t("Days")}</Label>
               <div className="flex gap-1.5">
                 <button
                   type="button"
                   onClick={() => setForm(f => ({ ...f, daysMask: WEEKDAY_MASK }))}
                   className="text-[11px] text-ink-500 hover:text-ink-300 font-mono"
                 >
-                  Mon–Fri
+                  {t("Mon–Fri")}
                 </button>
                 <span className="text-ink-700">·</span>
                 <button
@@ -251,7 +257,7 @@ function ScheduleDialog({
                   onClick={() => setForm(f => ({ ...f, daysMask: 0x7F }))}
                   className="text-[11px] text-ink-500 hover:text-ink-300 font-mono"
                 >
-                  Every day
+                  {t("Every day")}
                 </button>
               </div>
             </div>
@@ -263,7 +269,7 @@ function ScheduleDialog({
                     key={d.bit}
                     type="button"
                     onClick={() => toggleDay(d.bit)}
-                    title={d.long}
+                    title={t(d.long)}
                     className={cn(
                       "flex-1 h-9 rounded text-[12px] font-mono border transition-colors",
                       selected
@@ -271,7 +277,7 @@ function ScheduleDialog({
                         : "bg-ink-900 border-ink-700 text-ink-500 hover:border-ink-600 hover:text-ink-300",
                     )}
                   >
-                    {d.short}
+                    {dayShort(d, t)}
                   </button>
                 )
               })}
@@ -281,7 +287,7 @@ function ScheduleDialog({
           {/* Time range */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label className="text-[12px] text-ink-400 font-mono">Start</Label>
+              <Label className="text-[12px] text-ink-400 font-mono">{t("Start")}</Label>
               <Input
                 type="time"
                 value={form.start}
@@ -290,7 +296,7 @@ function ScheduleDialog({
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-[12px] text-ink-400 font-mono">End</Label>
+              <Label className="text-[12px] text-ink-400 font-mono">{t("End")}</Label>
               <Input
                 type="time"
                 value={form.end}
@@ -300,14 +306,14 @@ function ScheduleDialog({
             </div>
           </div>
           <p className="text-[11px] text-ink-600">
-            End must be after start. Midnight crossing is not supported — create two entries for overnight blocks.
+            {t("End must be after start. Midnight crossing is not supported — create two entries for overnight blocks.")}
           </p>
 
           {/* Enabled */}
           <div className="flex items-center justify-between rounded-lg border border-ink-800 bg-ink-900/30 px-3 py-2.5">
             <div>
-              <p className="text-[12.5px] font-medium text-ink-200">Enabled</p>
-              <p className="text-[11px] text-ink-500">Disabled schedules never fire</p>
+              <p className="text-[12.5px] font-medium text-ink-200">{t("Enabled")}</p>
+              <p className="text-[11px] text-ink-500">{t("Disabled schedules never fire")}</p>
             </div>
             <Switch
               checked={form.enabled}
@@ -321,7 +327,7 @@ function ScheduleDialog({
             onClick={onClose}
             className="px-3 py-1.5 text-[12.5px] text-ink-400 hover:text-ink-200 transition-colors"
           >
-            Cancel
+            {t("Cancel")}
           </button>
           <button
             onClick={handleSave}
@@ -333,7 +339,7 @@ function ScheduleDialog({
             ) : (
               <Check className="h-3.5 w-3.5" />
             )}
-            {existing ? "Save changes" : "Create schedule"}
+            {existing ? t("Save changes") : t("Create schedule")}
           </button>
         </DialogFooter>
       </DialogContent>
@@ -344,6 +350,7 @@ function ScheduleDialog({
 // ── Day badges (compact row display) ─────────────────────────────────────────
 
 function DayBadges({ mask }: { mask: number }) {
+  const { t } = useI18n()
   return (
     <span className="flex gap-0.5">
       {DAYS.map(d => {
@@ -351,7 +358,7 @@ function DayBadges({ mask }: { mask: number }) {
         return (
           <span
             key={d.bit}
-            title={d.long}
+            title={t(d.long)}
             className={cn(
               "inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-mono border",
               on
@@ -359,7 +366,7 @@ function DayBadges({ mask }: { mask: number }) {
                 : "bg-ink-900/50 border-ink-800 text-ink-700",
             )}
           >
-            {d.short}
+            {dayShort(d, t)}
           </span>
         )
       })}
@@ -378,6 +385,7 @@ function ScheduleRow({
   onEdit:       (s: APISchedule) => void
   onDelete:     (s: APISchedule) => void
 }) {
+  const { t } = useI18n()
   return (
     <div className="grid grid-cols-[1.4fr_1fr_minmax(0,1.4fr)_1fr_80px_80px] gap-4 px-4 py-3.5 items-center border-b border-ink-800/60 last:border-0">
       {/* Name */}
@@ -397,7 +405,7 @@ function ScheduleRow({
       {/* Days */}
       <div className="flex flex-col gap-0.5">
         <DayBadges mask={s.days_mask} />
-        <span className="text-[10.5px] text-ink-600 font-mono">{daysMaskLabel(s.days_mask)}</span>
+        <span className="text-[10.5px] text-ink-600 font-mono">{daysMaskLabel(s.days_mask, t)}</span>
       </div>
 
       {/* Time + playlist */}
@@ -417,14 +425,14 @@ function ScheduleRow({
       <div className="flex items-center justify-end gap-1">
         <button
           onClick={() => onEdit(s)}
-          title="Edit"
+          title={t("Edit")}
           className="h-7 w-7 rounded hover:bg-ink-800 text-ink-500 hover:text-ink-200 flex items-center justify-center transition-colors"
         >
           <Pencil className="h-3.5 w-3.5" />
         </button>
         <button
           onClick={() => onDelete(s)}
-          title="Delete"
+          title={t("Delete")}
           className="h-7 w-7 rounded hover:bg-red-500/10 text-ink-500 hover:text-red-400 flex items-center justify-center transition-colors"
         >
           <Trash2 className="h-3.5 w-3.5" />
@@ -445,6 +453,7 @@ export default function ScheduledPlaylistsPage() {
   const [editTarget,   setEditTarget]   = React.useState<APISchedule | undefined>()
   const [deleteTarget, setDeleteTarget] = React.useState<APISchedule | undefined>()
   const [deleting,     setDeleting]     = React.useState(false)
+  const { t, tn } = useI18n()
 
   async function load() {
     try {
@@ -458,7 +467,7 @@ export default function ScheduledPlaylistsPage() {
       setPlaylists(ps ?? [])
       setError(null)
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to load schedules")
+      setError(e instanceof Error ? e.message : t("Failed to load schedules"))
     }
   }
 
@@ -495,7 +504,7 @@ export default function ScheduledPlaylistsPage() {
       const updated = await api.schedules.update(s.id, { enabled: !s.enabled })
       setSchedules(prev => prev?.map(x => x.id === updated.id ? updated : x) ?? [])
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Update failed")
+      toast.error(e instanceof Error ? e.message : t("Update failed"))
     }
   }
 
@@ -505,9 +514,9 @@ export default function ScheduledPlaylistsPage() {
     try {
       await api.schedules.delete(deleteTarget.id)
       setSchedules(prev => prev?.filter(x => x.id !== deleteTarget.id) ?? [])
-      toast.success("Schedule deleted")
+      toast.success(t("Schedule deleted"))
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Delete failed")
+      toast.error(e instanceof Error ? e.message : t("Delete failed"))
     } finally {
       setDeleting(false)
       setDeleteTarget(undefined)
@@ -521,21 +530,21 @@ export default function ScheduledPlaylistsPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-[24px] font-bold tracking-tight text-ink-100">Schedules</h1>
+          <h1 className="text-[24px] font-bold tracking-tight text-ink-100">{t("Schedules")}</h1>
           <p className="mt-1 text-[12.5px] text-ink-400">
             {schedules !== null
-              ? `${schedules.length} schedule${schedules.length !== 1 ? "s" : ""} configured`
-              : "Day-parting for your mounts — auto-play a playlist during a weekly window"}
+              ? tn(schedules.length, "{n} schedule configured", "{n} schedules configured")
+              : t("Day-parting for your mounts — auto-play a playlist during a weekly window")}
           </p>
         </div>
         <button
           onClick={openCreate}
           disabled={mounts.length === 0 || playlists.length === 0}
           className="flex items-center gap-1.5 px-3 py-1.5 text-[12.5px] font-medium bg-k-500 text-white hover:bg-k-600 disabled:opacity-50 transition-colors shrink-0"
-          title={mounts.length === 0 ? "Create a mount first" : playlists.length === 0 ? "Create a playlist first" : ""}
+          title={mounts.length === 0 ? t("Create a mount first") : playlists.length === 0 ? t("Create a playlist first") : ""}
         >
           <Plus className="h-3.5 w-3.5" />
-          Add schedule
+          {t("Add schedule")}
         </button>
       </div>
 
@@ -557,9 +566,9 @@ export default function ScheduledPlaylistsPage() {
       {!isLoading && schedules?.length === 0 && (
         <div className="border-t border-ink-800 flex flex-col items-center gap-3 py-16">
           <CalendarClock className="h-10 w-10 text-ink-700" />
-          <p className="text-[13px] text-ink-500">No schedules configured</p>
+          <p className="text-[13px] text-ink-500">{t("No schedules configured")}</p>
           <p className="text-[12px] text-ink-600 text-center max-w-sm">
-            Schedules automatically start a playlist on a mount during a recurring weekly time window — perfect for day-parting (Morning Mix, Evening Jazz, etc.).
+            {t("Schedules automatically start a playlist on a mount during a recurring weekly time window — perfect for day-parting (Morning Mix, Evening Jazz, etc.).")}
           </p>
           <button
             onClick={openCreate}
@@ -567,7 +576,7 @@ export default function ScheduledPlaylistsPage() {
             className="mt-1 flex items-center gap-1.5 px-3 py-1.5 rounded text-[12.5px] font-medium border border-ink-700 text-ink-300 hover:border-ink-500 hover:text-ink-100 disabled:opacity-50 transition-colors"
           >
             <Plus className="h-3.5 w-3.5" />
-            Add your first schedule
+            {t("Add your first schedule")}
           </button>
         </div>
       )}
@@ -576,11 +585,11 @@ export default function ScheduledPlaylistsPage() {
       {!isLoading && schedules && schedules.length > 0 && (
         <div className="border border-ink-800 rounded-lg overflow-hidden">
           <div className="grid grid-cols-[1.4fr_1fr_minmax(0,1.4fr)_1fr_80px_80px] gap-4 px-4 py-2 bg-ink-900/60 border-b border-ink-800 text-[10.5px] uppercase tracking-wider text-ink-500 font-mono">
-            <div>Name</div>
-            <div>Mount</div>
-            <div>Days</div>
-            <div>Window</div>
-            <div className="text-center">Active</div>
+            <div>{t("Name")}</div>
+            <div>{t("Mount")}</div>
+            <div>{t("Days")}</div>
+            <div>{t("Window")}</div>
+            <div className="text-center">{t("Active")}</div>
             <div />
           </div>
           {schedules.map(s => (
@@ -599,11 +608,11 @@ export default function ScheduledPlaylistsPage() {
       {/* Info strip */}
       {!isLoading && schedules !== null && (
         <div className="mt-8 rounded-lg border border-ink-800/60 bg-ink-900/30 px-4 py-3.5 space-y-2">
-          <p className="text-[11.5px] font-semibold text-ink-400 font-mono uppercase tracking-wider">How schedules work</p>
+          <p className="text-[11.5px] font-semibold text-ink-400 font-mono uppercase tracking-wider">{t("How schedules work")}</p>
           <div className="space-y-1 text-[12px] text-ink-500">
-            <p>Every few seconds the runner checks the current minute (in the server timezone) against each enabled schedule.</p>
-            <p>When a window opens it starts the playlist on the mount — replacing whatever was playing. When the window closes the mount stops.</p>
-            <p>Windows on the same mount and overlapping days cannot intersect; the API rejects conflicting entries.</p>
+            <p>{t("Every few seconds the runner checks the current minute (in the server timezone) against each enabled schedule.")}</p>
+            <p>{t("When a window opens it starts the playlist on the mount — replacing whatever was playing. When the window closes the mount stops.")}</p>
+            <p>{t("Windows on the same mount and overlapping days cannot intersect; the API rejects conflicting entries.")}</p>
           </div>
         </div>
       )}
@@ -622,16 +631,16 @@ export default function ScheduledPlaylistsPage() {
       <AlertDialog open={!!deleteTarget} onOpenChange={v => !v && setDeleteTarget(undefined)}>
         <AlertDialogContent className="bg-ink-950 border-ink-800 text-ink-100">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-[15px]">Delete schedule?</AlertDialogTitle>
+            <AlertDialogTitle className="text-[15px]">{t("Delete schedule?")}</AlertDialogTitle>
             <AlertDialogDescription className="text-ink-400 text-[12.5px]">
               <span className="font-mono text-ink-300">{deleteTarget?.name}</span>
               <br />
-              This schedule will stop firing immediately. Any session it started will be stopped at the next tick.
+              {t("This schedule will stop firing immediately. Any session it started will be stopped at the next tick.")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="bg-transparent border-ink-700 text-ink-300 hover:bg-ink-800 hover:text-ink-100 text-[12.5px]">
-              Cancel
+              {t("Cancel")}
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
@@ -642,7 +651,7 @@ export default function ScheduledPlaylistsPage() {
                 ? <span className="h-3.5 w-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
                 : <X className="h-3.5 w-3.5" />
               }
-              Delete
+              {t("Delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

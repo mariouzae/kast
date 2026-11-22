@@ -16,6 +16,7 @@ import {
   ChevronRight, ChevronDown, Folder, FolderOpen, Minus, Music,
 } from "lucide-react"
 import { toast } from "sonner"
+import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import {
   api, type APIPlaylist, type APIMount, type APITrack, type APIAutoDJSession,
@@ -29,6 +30,7 @@ type PlayMode = "sequential" | "shuffle"
 type Track = {
   path: string; title: string; artist: string; album: string
   genre: string; duration: string; durationSec: number; folder: string
+  relFolder: string // folder relative to the library root, "" = top level
 }
 
 type Playlist = {
@@ -63,6 +65,7 @@ function adaptApiTrack(t: APITrack): Track {
     duration: formatMs(t.duration_ms),
     durationSec: Math.round(t.duration_ms / 1000),
     folder: t.folder || "",
+    relFolder: t.rel_folder ?? "",
   }
 }
 
@@ -96,51 +99,36 @@ type FolderNode = {
   allTracks: Track[]   // recursive
 }
 
-function folderPrefix(folders: string[]): string {
-  if (folders.length === 0) return ""
-  let prefix = folders[0]
-  for (const f of folders.slice(1)) {
-    while (f !== prefix && !f.startsWith(prefix + "/")) {
-      const idx = prefix.lastIndexOf("/")
-      if (idx <= 0) return ""
-      prefix = prefix.slice(0, idx)
-    }
-  }
-  return prefix
-}
-
+// buildFolderTree returns a single root node for the library folder (e.g.
+// "music") holding its subfolders and top-level tracks. Folders come from the
+// server's rel_folder (path relative to the library root), so top-level tracks
+// and a lone top folder are never dropped. Node fullPath = rel path ("" = root).
 function buildFolderTree(tracks: Track[]): FolderNode[] {
   if (tracks.length === 0) return []
 
-  const folders = Array.from(new Set(tracks.map((t) => t.folder).filter(Boolean)))
-  const prefix  = folderPrefix(folders)
+  // Name the root after the library folder: a track's absolute folder minus
+  // its rel_folder suffix is the library root path.
+  const sample   = tracks[0]
+  const rootAbs  = sample.relFolder && sample.folder.endsWith("/" + sample.relFolder)
+    ? sample.folder.slice(0, -(sample.relFolder.length + 1))
+    : sample.folder
+  const rootName = rootAbs.split("/").filter(Boolean).pop() || "Library"
 
-  const nodes = new Map<string, FolderNode>()
-  const roots: FolderNode[] = []
+  const root: FolderNode = { name: rootName, fullPath: "", children: [], directTracks: [], allTracks: [] }
+  const nodes = new Map<string, FolderNode>([["", root]])
 
-  const getOrCreate = (relPath: string, absPath: string): FolderNode => {
-    if (nodes.has(relPath)) return nodes.get(relPath)!
-    const name = relPath.split("/").pop() || relPath
-    const node: FolderNode = { name, fullPath: absPath, children: [], directTracks: [], allTracks: [] }
-    nodes.set(relPath, node)
-    const parentRel = relPath.lastIndexOf("/") > 0 ? relPath.slice(0, relPath.lastIndexOf("/")) : ""
-    if (parentRel) {
-      const parentAbs = absPath.slice(0, absPath.lastIndexOf("/"))
-      getOrCreate(parentRel, parentAbs).children.push(node)
-    } else {
-      roots.push(node)
-    }
+  const getOrCreate = (rel: string): FolderNode => {
+    const hit = nodes.get(rel)
+    if (hit) return hit
+    const slash  = rel.lastIndexOf("/")
+    const parent = getOrCreate(slash > 0 ? rel.slice(0, slash) : "")
+    const node: FolderNode = { name: rel.slice(slash + 1), fullPath: rel, children: [], directTracks: [], allTracks: [] }
+    parent.children.push(node)
+    nodes.set(rel, node)
     return node
   }
 
-  for (const track of tracks) {
-    if (!track.folder) continue
-    const rel = (prefix && track.folder.startsWith(prefix + "/"))
-      ? track.folder.slice(prefix.length + 1)
-      : track.folder
-    if (!rel) continue
-    getOrCreate(rel, track.folder).directTracks.push(track)
-  }
+  for (const track of tracks) getOrCreate(track.relFolder).directTracks.push(track)
 
   const computeAll = (node: FolderNode): Track[] => {
     node.allTracks = [...node.directTracks]
@@ -148,61 +136,81 @@ function buildFolderTree(tracks: Track[]): FolderNode[] {
     return node.allTracks
   }
   const sortNode = (node: FolderNode) => {
-    node.children.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }))
-    node.directTracks.sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }))
+    node.children.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true }))
+    node.directTracks.sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base", numeric: true }))
     node.children.forEach(sortNode)
   }
-
-  roots.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }))
-  roots.forEach(computeAll)
-  roots.forEach(sortNode)
-  return roots
+  computeAll(root)
+  sortNode(root)
+  return [root]
 }
 
 // ── Tree row components ──
 
-function TrackLeaf({ track, selected, onToggle, depth }: {
-  track: Track; selected: boolean; onToggle: () => void; depth: number
+// Checkbox used by the Add Tracks tree. "locked" = already in the playlist.
+function CheckBox({ state }: { state: "none" | "some" | "all" | "locked" }) {
+  return (
+    <div className={cn(
+      "flex h-4 w-4 shrink-0 items-center justify-center border transition-colors",
+      state === "all"    ? "border-k-500 bg-k-500" :
+      state === "some"   ? "border-k-500/60 bg-k-500/20" :
+      state === "locked" ? "border-ink-600 bg-ink-700" :
+      "border-ink-700",
+    )}>
+      {(state === "all" || state === "locked") && <Check className={cn("h-2.5 w-2.5", state === "all" ? "text-white" : "text-ink-400")} />}
+      {state === "some" && <Minus className="h-2.5 w-2.5 text-k-400" />}
+    </div>
+  )
+}
+
+function TrackLeaf({ track, selected, inPlaylist, onToggle, depth }: {
+  track: Track; selected: boolean; inPlaylist: boolean; onToggle: () => void; depth: number
 }) {
+  const { t } = useI18n()
   return (
     <div
-      onClick={onToggle}
-      className="flex items-center gap-2 py-1.5 pr-3 cursor-pointer hover:bg-white/[0.025] transition-colors"
+      onClick={inPlaylist ? undefined : onToggle}
+      className={cn(
+        "flex items-center gap-2 py-1.5 pr-3 transition-colors",
+        inPlaylist ? "cursor-default" : "cursor-pointer hover:bg-ink-100/[0.03]",
+      )}
       style={{ paddingLeft: `${depth * 16 + 8}px` }}
+      title={inPlaylist ? t("Already in this playlist") : undefined}
     >
       <div className="h-4 w-4 shrink-0" /> {/* align with folder expand btn */}
-      <div className={cn(
-        "flex h-4 w-4 shrink-0 items-center justify-center border",
-        selected ? "border-k-500 bg-k-500" : "border-ink-700",
-      )}>
-        {selected && <Check className="h-2.5 w-2.5 text-white" />}
-      </div>
+      <CheckBox state={inPlaylist ? "locked" : selected ? "all" : "none"} />
       <Music className="h-3 w-3 text-ink-700 shrink-0" />
       <div className="min-w-0 flex-1 flex items-baseline gap-2">
-        <span className="text-[12.5px] text-ink-200 truncate">{track.title}</span>
+        <span className={cn("text-[12.5px] truncate", inPlaylist ? "text-ink-500" : "text-ink-200")}>{track.title}</span>
         <span className="text-[11px] text-ink-600 truncate max-w-[100px] shrink-0">{track.artist}</span>
+        {inPlaylist && <span className="text-[10.5px] font-mono text-ink-600 shrink-0">{t("in playlist")}</span>}
       </div>
       <span className="font-mono text-[11px] text-ink-600 shrink-0">{track.duration}</span>
     </div>
   )
 }
 
-function FolderRow({ node, selected, expanded, onToggleExpand, onToggleFolder, onToggleTrack, depth }: {
+function FolderRow({ node, selected, existing, expanded, onToggleExpand, onToggleFolder, onToggleTrack, depth }: {
   node: FolderNode
-  selected: Set<string>; expanded: Set<string>
+  selected: Set<string>; existing: Set<string>; expanded: Set<string>
   onToggleExpand: (p: string) => void
   onToggleFolder: (n: FolderNode) => void
   onToggleTrack:  (p: string) => void
   depth: number
 }) {
   const isExpanded = expanded.has(node.fullPath)
-  const selCount   = node.allTracks.filter((t) => selected.has(t.path)).length
-  const checkState = selCount === 0 ? "none" : selCount === node.allTracks.length ? "all" : "some"
+  const { t } = useI18n()
+  const addable     = node.allTracks.filter((t) => !existing.has(t.path))
+  const selCount    = addable.filter((t) => selected.has(t.path)).length
+  const checkState  =
+    addable.length === 0          ? "locked" :
+    selCount === 0                ? "none"   :
+    selCount === addable.length   ? "all"    : "some"
 
   return (
     <>
       <div
-        className="flex items-center gap-2 py-1.5 pr-3 hover:bg-white/[0.025] transition-colors"
+        className="flex items-center gap-2 py-1.5 pr-3 hover:bg-ink-100/[0.03] transition-colors"
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
       >
         {/* Expand toggle */}
@@ -216,15 +224,11 @@ function FolderRow({ node, selected, expanded, onToggleExpand, onToggleFolder, o
         {/* Tri-state checkbox */}
         <button
           onClick={(e) => { e.stopPropagation(); onToggleFolder(node) }}
-          className={cn(
-            "flex h-4 w-4 shrink-0 items-center justify-center border transition-colors",
-            checkState === "all"  ? "border-k-500 bg-k-500" :
-            checkState === "some" ? "border-k-500/60 bg-k-500/20" :
-            "border-ink-700",
-          )}
+          disabled={checkState === "locked"}
+          title={checkState === "locked" ? t("All tracks already in this playlist") : undefined}
+          className="shrink-0 disabled:cursor-default"
         >
-          {checkState === "all"  && <Check className="h-2.5 w-2.5 text-white" />}
-          {checkState === "some" && <Minus className="h-2.5 w-2.5 text-k-400" />}
+          <CheckBox state={checkState} />
         </button>
 
         {/* Folder icon + name + count — click expands */}
@@ -237,7 +241,11 @@ function FolderRow({ node, selected, expanded, onToggleExpand, onToggleFolder, o
             : <Folder     className="h-3.5 w-3.5 text-ink-600 shrink-0" />
           }
           <span className="text-[13px] text-ink-100 font-medium truncate text-left flex-1">{node.name}</span>
-          <span className="font-mono text-[11px] text-ink-600 shrink-0">{node.allTracks.length}</span>
+          <span className="font-mono text-[11px] text-ink-600 shrink-0">
+            {addable.length < node.allTracks.length
+              ? t("{have}/{total} in playlist", { have: node.allTracks.length - addable.length, total: node.allTracks.length })
+              : node.allTracks.length}
+          </span>
         </button>
       </div>
 
@@ -245,7 +253,7 @@ function FolderRow({ node, selected, expanded, onToggleExpand, onToggleFolder, o
         <>
           {node.children.map((child) => (
             <FolderRow key={child.fullPath} node={child}
-              selected={selected} expanded={expanded}
+              selected={selected} existing={existing} expanded={expanded}
               onToggleExpand={onToggleExpand}
               onToggleFolder={onToggleFolder}
               onToggleTrack={onToggleTrack}
@@ -255,6 +263,7 @@ function FolderRow({ node, selected, expanded, onToggleExpand, onToggleFolder, o
           {node.directTracks.map((track) => (
             <TrackLeaf key={track.path} track={track}
               selected={selected.has(track.path)}
+              inPlaylist={existing.has(track.path)}
               onToggle={() => onToggleTrack(track.path)}
               depth={depth + 1}
             />
@@ -274,15 +283,14 @@ function AddTracksDialog({ open, onOpenChange, library, existingPaths, onAdd }: 
   const [search, setSearch]   = React.useState("")
   const [selected, setSelected] = React.useState<Set<string>>(new Set())
   const [expanded, setExpanded] = React.useState<Set<string>>(new Set())
+  const { t, tn } = useI18n()
 
-  const available = React.useMemo(
-    () => library.filter((t) => !existingPaths.includes(t.path)),
-    [library, existingPaths],
-  )
+  // Show the whole library; tracks already in the playlist are marked and
+  // can't be selected (hiding them made the library look incomplete).
+  const existing = React.useMemo(() => new Set(existingPaths), [existingPaths])
+  const tree = React.useMemo(() => buildFolderTree(library), [library])
 
-  const tree = React.useMemo(() => buildFolderTree(available), [available])
-
-  // Expand top-level folders when tree is first built
+  // Expand the library root when the tree is first built so its folders show.
   React.useEffect(() => {
     setExpanded(new Set(tree.map((n) => n.fullPath)))
   }, [tree])
@@ -291,10 +299,10 @@ function AddTracksDialog({ open, onOpenChange, library, existingPaths, onAdd }: 
   const searchResult = React.useMemo(() => {
     if (!search) return null
     const q = search.toLowerCase()
-    return available.filter((t) =>
+    return library.filter((t) =>
       [t.title, t.artist, t.album].some((f) => f.toLowerCase().includes(q))
     )
-  }, [available, search])
+  }, [library, search])
 
   const toggleTrack  = (path: string) =>
     setSelected((prev) => { const n = new Set(prev); n.has(path) ? n.delete(path) : n.add(path); return n })
@@ -302,27 +310,28 @@ function AddTracksDialog({ open, onOpenChange, library, existingPaths, onAdd }: 
   const toggleFolder = (node: FolderNode) =>
     setSelected((prev) => {
       const n = new Set(prev)
-      const allSel = node.allTracks.every((t) => n.has(t.path))
-      allSel ? node.allTracks.forEach((t) => n.delete(t.path)) : node.allTracks.forEach((t) => n.add(t.path))
+      const addable = node.allTracks.filter((t) => !existing.has(t.path))
+      const allSel  = addable.every((t) => n.has(t.path))
+      allSel ? addable.forEach((t) => n.delete(t.path)) : addable.forEach((t) => n.add(t.path))
       return n
     })
 
   const toggleExpand = (path: string) =>
     setExpanded((prev) => { const n = new Set(prev); n.has(path) ? n.delete(path) : n.add(path); return n })
 
-  const searchAllSel  = !!searchResult && searchResult.length > 0 && searchResult.every((t) => selected.has(t.path))
+  const searchAddable = searchResult?.filter((t) => !existing.has(t.path)) ?? []
+  const searchAllSel  = searchAddable.length > 0 && searchAddable.every((t) => selected.has(t.path))
   const toggleSearchAll = () =>
     setSelected((prev) => {
-      if (!searchResult) return prev
       const n = new Set(prev)
-      searchAllSel ? searchResult.forEach((t) => n.delete(t.path)) : searchResult.forEach((t) => n.add(t.path))
+      searchAllSel ? searchAddable.forEach((t) => n.delete(t.path)) : searchAddable.forEach((t) => n.add(t.path))
       return n
     })
 
   const handleAdd = () => {
     const paths = Array.from(selected)
     onAdd(paths); setSelected(new Set()); setSearch(""); onOpenChange(false)
-    toast.success(`${paths.length} track${paths.length !== 1 ? "s" : ""} added`)
+    toast.success(tn(paths.length, "{n} track added", "{n} tracks added"))
   }
   const handleClose = () => { setSelected(new Set()); setSearch(""); onOpenChange(false) }
 
@@ -332,11 +341,13 @@ function AddTracksDialog({ open, onOpenChange, library, existingPaths, onAdd }: 
 
         {/* Header */}
         <DialogHeader className="shrink-0 px-5 pt-5 pb-4 border-b border-ink-800">
-          <DialogTitle className="text-ink-100">Add Tracks</DialogTitle>
+          <DialogTitle className="text-ink-100">{t("Add Tracks")}</DialogTitle>
           <DialogDescription className="text-ink-500">
             {selected.size > 0
-              ? `${selected.size} track${selected.size !== 1 ? "s" : ""} selected`
-              : "Select folders or individual tracks to add."}
+              ? tn(selected.size, "{n} track selected", "{n} tracks selected")
+              : existing.size > 0
+                ? t("Select folders or tracks to add. {n} already in this playlist.", { n: existing.size })
+                : t("Select folders or individual tracks to add.")}
           </DialogDescription>
         </DialogHeader>
 
@@ -346,11 +357,11 @@ function AddTracksDialog({ open, onOpenChange, library, existingPaths, onAdd }: 
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-500 h-3.5 w-3.5" />
             <input
               className="h-8 w-full bg-ink-950 border border-ink-800 pl-8 pr-3 text-[12px] text-ink-100 placeholder:text-ink-600 focus:border-k-500/50 focus:outline-none"
-              placeholder="Search tracks…"
+              placeholder={t("Search tracks…")}
               value={search} onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          {searchResult && searchResult.length > 0 && (
+          {searchAddable.length > 0 && (
             <button
               onClick={toggleSearchAll}
               className="flex items-center gap-1.5 shrink-0 text-[12px] text-ink-400 hover:text-ink-200 transition-colors"
@@ -361,7 +372,7 @@ function AddTracksDialog({ open, onOpenChange, library, existingPaths, onAdd }: 
               )}>
                 {searchAllSel && <Check className="h-2.5 w-2.5 text-white" />}
               </div>
-              <span>All</span>
+              <span>{t("All")}</span>
             </button>
           )}
         </div>
@@ -369,35 +380,41 @@ function AddTracksDialog({ open, onOpenChange, library, existingPaths, onAdd }: 
         {/* Content */}
         <div className="flex-1 overflow-y-auto">
           {library.length === 0 ? (
-            <p className="py-8 text-center text-[12px] text-ink-500">Library is empty. Scan from the Library page first.</p>
+            <p className="py-8 text-center text-[12px] text-ink-500">{t("Library is empty. Scan from the Library page first.")}</p>
           ) : searchResult !== null ? (
             searchResult.length === 0 ? (
-              <p className="py-8 text-center text-[12px] text-ink-500">No tracks found</p>
+              <p className="py-8 text-center text-[12px] text-ink-500">{t("No tracks found")}</p>
             ) : (
-              searchResult.map((track) => (
-                <div key={track.path} onClick={() => toggleTrack(track.path)}
-                  className="flex items-center gap-3 px-3 py-2.5 border-b border-ink-800/60 last:border-0 cursor-pointer hover:bg-white/[0.025] transition-colors"
+              searchResult.map((track) => {
+                const inPlaylist = existing.has(track.path)
+                return (
+                <div key={track.path} onClick={inPlaylist ? undefined : () => toggleTrack(track.path)}
+                  title={inPlaylist ? t("Already in this playlist") : undefined}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2.5 border-b border-ink-800/60 last:border-0 transition-colors",
+                    inPlaylist ? "cursor-default" : "cursor-pointer hover:bg-ink-100/[0.03]",
+                  )}
                 >
-                  <div className={cn(
-                    "flex h-4 w-4 shrink-0 items-center justify-center border",
-                    selected.has(track.path) ? "border-k-500 bg-k-500" : "border-ink-700",
-                  )}>
-                    {selected.has(track.path) && <Check className="h-2.5 w-2.5 text-white" />}
-                  </div>
+                  <CheckBox state={inPlaylist ? "locked" : selected.has(track.path) ? "all" : "none"} />
                   <div className="min-w-0 flex-1">
-                    <p className="text-[12.5px] text-ink-100 truncate font-medium">{track.title}</p>
-                    <p className="text-[11px] text-ink-500 truncate">{track.artist}</p>
+                    <p className={cn("text-[12.5px] truncate font-medium", inPlaylist ? "text-ink-500" : "text-ink-100")}>{track.title}</p>
+                    <p className="text-[11px] text-ink-500 truncate">
+                      {track.artist}
+                      {track.relFolder && <span className="text-ink-600"> · {track.relFolder}</span>}
+                      {inPlaylist && <span className="font-mono text-ink-600"> · {t("in playlist")}</span>}
+                    </p>
                   </div>
                   <span className="text-[11px] text-ink-500 font-mono shrink-0">{track.duration}</span>
                 </div>
-              ))
+                )
+              })
             )
           ) : tree.length === 0 ? (
-            <p className="py-8 text-center text-[12px] text-ink-500">No tracks available</p>
+            <p className="py-8 text-center text-[12px] text-ink-500">{t("No tracks available")}</p>
           ) : (
             tree.map((node) => (
               <FolderRow key={node.fullPath} node={node}
-                selected={selected} expanded={expanded}
+                selected={selected} existing={existing} expanded={expanded}
                 onToggleExpand={toggleExpand}
                 onToggleFolder={toggleFolder}
                 onToggleTrack={toggleTrack}
@@ -411,11 +428,11 @@ function AddTracksDialog({ open, onOpenChange, library, existingPaths, onAdd }: 
         <DialogFooter className="shrink-0 px-5 py-4 border-t border-ink-800">
           <button onClick={handleClose}
             className="h-9 px-4 border border-ink-800 hover:bg-ink-800 text-[13px] text-ink-200 transition-colors">
-            Cancel
+            {t("Cancel")}
           </button>
           <button onClick={handleAdd} disabled={selected.size === 0}
             className="h-9 px-4 bg-k-500 hover:bg-k-400 disabled:opacity-50 text-white text-[13px] font-semibold transition-colors">
-            Add {selected.size > 0 ? `(${selected.size})` : ""}
+            {selected.size > 0 ? t("Add ({n})", { n: selected.size }) : t("Add")}
           </button>
         </DialogFooter>
       </DialogContent>
@@ -425,16 +442,18 @@ function AddTracksDialog({ open, onOpenChange, library, existingPaths, onAdd }: 
 
 // ── Track Row ──
 
-function TrackRow({ track, index, onRemove,
+function TrackRow({ track, index, onRemove, selected, onToggleSelect,
   isDragging, isDragOver, onDragStart, onDragEnd, onDragOver, onDrop,
 }: {
   track: Track; index: number
   onRemove: () => void
+  selected: boolean; onToggleSelect: (shiftKey: boolean) => void
   isDragging: boolean; isDragOver: boolean
   onDragStart: () => void; onDragEnd: () => void
   onDragOver: (e: React.DragEvent) => void; onDrop: () => void
 }) {
   const [hovered, setHovered] = React.useState(false)
+  const { t } = useI18n()
 
   return (
     <div
@@ -448,10 +467,24 @@ function TrackRow({ track, index, onRemove,
       className={cn(
         "grid items-center gap-3 border-b border-ink-800/60 last:border-0 px-1 py-2.5 cursor-grab select-none transition-colors",
         isDragOver && "border-t-2 border-t-k-500 bg-ink-900/60",
-        isDragging ? "opacity-30" : "hover:bg-white/[0.02]",
+        isDragging ? "opacity-30" : selected ? "bg-k-500/[0.06]" : "hover:bg-ink-100/[0.025]",
       )}
-      style={{ gridTemplateColumns: "20px 20px 1fr 55px 52px" }}
+      style={{ gridTemplateColumns: "20px 20px 20px 1fr 55px 52px" }}
     >
+      {/* Select */}
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={selected}
+        aria-label={t("Select {name}", { name: track.title })}
+        onClick={(e) => { e.stopPropagation(); onToggleSelect(e.shiftKey) }}
+        onMouseDown={(e) => e.stopPropagation()}
+        draggable={false}
+        className="flex justify-center cursor-pointer"
+      >
+        <CheckBox state={selected ? "all" : "none"} />
+      </button>
+
       {/* Grip */}
       <div className="flex justify-center text-ink-700">
         <GripVertical className="h-3.5 w-3.5" />
@@ -497,6 +530,12 @@ function PlaylistDetail({ playlist, library, onChange, onDelete }: {
   const [trackFilter, setTrackFilter] = React.useState("")
   const [dragIndex, setDragIndex]     = React.useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = React.useState<number | null>(null)
+  const [selection, setSelection]     = React.useState<Set<string>>(new Set())
+  const lastToggled                   = React.useRef<number | null>(null) // index in visibleTracks, for shift-click
+  // Latest playlist for the Undo action (which may fire after other edits).
+  const playlistRef = React.useRef(playlist)
+  const { t, tn } = useI18n()
+  playlistRef.current = playlist
 
   const tracksByPath = React.useMemo(() => new Map(library.map((t) => [t.path, t])), [library])
   const tracks = playlist.trackPaths.map((p) => tracksByPath.get(p)).filter((t): t is Track => t !== undefined)
@@ -519,11 +558,53 @@ function PlaylistDetail({ playlist, library, onChange, onDelete }: {
 
   const removeTrack = (path: string) => {
     onChange({ ...playlist, trackPaths: playlist.trackPaths.filter((p) => p !== path) })
-    toast.success("Track removed")
+    setSelection((prev) => { const n = new Set(prev); n.delete(path); return n })
+    toast.success(t("Track removed"))
+  }
+
+  // ── Multi-select ──
+  // Selection follows what's visible: reset on playlist switch or filter change.
+  React.useEffect(() => { setSelection(new Set()); lastToggled.current = null }, [playlist.id, trackFilter])
+
+  const toggleSelect = (index: number, shiftKey: boolean) => {
+    // Read the anchor now: the state updater runs later, after the ref changes.
+    const anchor = shiftKey ? lastToggled.current : null
+    const from   = anchor !== null ? Math.min(anchor, index) : index
+    const to     = anchor !== null ? Math.max(anchor, index) : index
+    const paths  = visibleTracks.slice(from, to + 1).map((t) => t.path)
+    const turnOn = !selection.has(visibleTracks[index].path)
+    // Shift-click applies the clicked row's new on/off state to the whole range.
+    setSelection((prev) => {
+      const n = new Set(prev)
+      for (const p of paths) turnOn ? n.add(p) : n.delete(p)
+      return n
+    })
+    lastToggled.current = index
+  }
+  const selectedCount = visibleTracks.filter((t) => selection.has(t.path)).length
+  const selectState: "none" | "some" | "all" =
+    selectedCount === 0 ? "none" : selectedCount === visibleTracks.length ? "all" : "some"
+  const toggleSelectAll = () =>
+    setSelection(selectState === "all" ? new Set() : new Set(visibleTracks.map((t) => t.path)))
+
+  const removeSelected = () => {
+    const before = playlist.trackPaths
+    const after  = before.filter((p) => !selection.has(p))
+    const removed = before.length - after.length
+    if (removed === 0) return
+    onChange({ ...playlist, trackPaths: after })
+    setSelection(new Set())
+    lastToggled.current = null
+    toast.success(tn(removed, "Removed {n} track from \"{name}\"", "Removed {n} tracks from \"{name}\"", { name: playlist.name }), {
+      action: {
+        label: t("Undo"),
+        onClick: () => onChange({ ...playlistRef.current, trackPaths: before }),
+      },
+    })
   }
 
   const saveName = () => {
-    if (nameValue.trim()) { onChange({ ...playlist, name: nameValue.trim() }); toast.success("Renamed") }
+    if (nameValue.trim()) { onChange({ ...playlist, name: nameValue.trim() }); toast.success(t("Renamed")) }
     setNameEdit(false)
   }
 
@@ -542,25 +623,25 @@ function PlaylistDetail({ playlist, library, onChange, onDelete }: {
                   onKeyDown={(e) => { if (e.key === "Enter") saveName(); if (e.key === "Escape") { setNameEdit(false); setNameValue(playlist.name) } }}
                   autoFocus
                 />
-                <button onClick={saveName} className="h-7 px-3 bg-k-500 hover:bg-k-400 text-white text-[12px] font-semibold">Save</button>
-                <button onClick={() => { setNameEdit(false); setNameValue(playlist.name) }} className="h-7 px-3 border border-ink-800 hover:bg-ink-800 text-[12px] text-ink-400">Cancel</button>
+                <button onClick={saveName} className="h-7 px-3 bg-k-500 hover:bg-k-400 text-white text-[12px] font-semibold">{t("Save")}</button>
+                <button onClick={() => { setNameEdit(false); setNameValue(playlist.name) }} className="h-7 px-3 border border-ink-800 hover:bg-ink-800 text-[12px] text-ink-400">{t("Cancel")}</button>
               </div>
             ) : (
               <h1 className="cursor-text truncate text-[22px] font-bold tracking-tight text-ink-100 hover:opacity-80 transition-opacity"
-                onClick={() => setNameEdit(true)} title="Click to rename">
+                onClick={() => setNameEdit(true)} title={t("Click to rename")}>
                 {playlist.name}
               </h1>
             )}
             <p className="mt-1 font-mono text-[11px] text-ink-500">
-              {tracks.length} track{tracks.length !== 1 ? "s" : ""}
+              {tn(tracks.length, "{n} track", "{n} tracks")}
               {totalDur ? ` · ${totalDur}` : ""}
-              {missingCount > 0 && <span className="ml-2 text-amber-500">· {missingCount} missing</span>}
+              {missingCount > 0 && <span className="ml-2 text-amber-500">· {t("{n} missing", { n: missingCount })}</span>}
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <button onClick={() => setAddOpen(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-[12.5px] font-medium bg-k-500 text-white hover:bg-k-600 transition-colors">
-              <Plus className="h-3 w-3" /> Add tracks
+              <Plus className="h-3 w-3" /> {t("Add tracks")}
             </button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
@@ -570,12 +651,12 @@ function PlaylistDetail({ playlist, library, onChange, onDelete }: {
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Delete &quot;{playlist.name}&quot;?</AlertDialogTitle>
-                  <AlertDialogDescription>Permanently removed. Library tracks are not affected.</AlertDialogDescription>
+                  <AlertDialogTitle>{t("Delete \"{name}\"?", { name: playlist.name })}</AlertDialogTitle>
+                  <AlertDialogDescription>{t("Permanently removed. Library tracks are not affected.")}</AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction variant="destructive" onClick={onDelete}>Delete</AlertDialogAction>
+                  <AlertDialogCancel>{t("Cancel")}</AlertDialogCancel>
+                  <AlertDialogAction variant="destructive" onClick={onDelete}>{t("Delete")}</AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
@@ -589,23 +670,52 @@ function PlaylistDetail({ playlist, library, onChange, onDelete }: {
         {tracks.length === 0 ? (
           <div className="flex flex-col items-center gap-3 py-16 text-ink-500">
             <ListMusic className="h-10 w-10 opacity-20" />
-            <p className="text-[12.5px]">Playlist is empty</p>
+            <p className="text-[12.5px]">{t("Playlist is empty")}</p>
             <button onClick={() => setAddOpen(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-[12.5px] font-medium bg-k-500 text-white hover:bg-k-600 transition-colors">
-              <Plus className="h-3 w-3" /> Add tracks
+              <Plus className="h-3 w-3" /> {t("Add tracks")}
             </button>
           </div>
         ) : (
           <div className="px-5 py-4">
-            <div className="mb-3 flex items-center justify-between">
-              <span className="font-mono text-[10.5px] font-medium uppercase tracking-wider text-ink-500">
-                Tracks
-              </span>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3 px-1">
+                <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={selectState === "all" ? true : selectState === "some" ? "mixed" : false}
+                  aria-label={t("Select all tracks")}
+                  onClick={toggleSelectAll}
+                  disabled={visibleTracks.length === 0}
+                  className="flex w-5 justify-center"
+                >
+                  <CheckBox state={selectState} />
+                </button>
+                {selectedCount > 0 ? (
+                  <div className="flex min-w-0 items-center gap-3 text-[12px]">
+                    <span className="font-medium text-ink-200 whitespace-nowrap">{t("{n} selected", { n: selectedCount })}</span>
+                    <button onClick={() => setSelection(new Set())} className="text-ink-500 hover:text-ink-200 transition-colors">
+                      {t("Clear")}
+                    </button>
+                    <button
+                      onClick={removeSelected}
+                      className="flex items-center gap-1.5 whitespace-nowrap px-2.5 py-1 text-[12px] font-medium text-white bg-red-600 hover:bg-red-700 transition-colors"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      {t("Remove from playlist")}
+                    </button>
+                  </div>
+                ) : (
+                  <span className="font-mono text-[10.5px] font-medium uppercase tracking-wider text-ink-500">
+                    {t("Tracks")}
+                  </span>
+                )}
+              </div>
               <div className="relative w-48">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-500 h-3 w-3" />
                 <input
                   className="h-7 w-full bg-transparent border border-ink-800 pl-7 pr-2 text-[12px] text-ink-100 placeholder:text-ink-600 focus:border-k-500/50 focus:outline-none"
-                  placeholder="Filter…" value={trackFilter} onChange={(e) => setTrackFilter(e.target.value)}
+                  placeholder={t("Filter…")} value={trackFilter} onChange={(e) => setTrackFilter(e.target.value)}
                 />
               </div>
             </div>
@@ -618,6 +728,8 @@ function PlaylistDetail({ playlist, library, onChange, onDelete }: {
                     track={track}
                     index={i}
                     onRemove={() => removeTrack(track.path)}
+                    selected={selection.has(track.path)}
+                    onToggleSelect={(shift) => toggleSelect(i, shift)}
                     isDragging={dragIndex === realIndex}
                     isDragOver={dragOverIndex === realIndex}
                     onDragStart={() => setDragIndex(realIndex)}
@@ -629,10 +741,10 @@ function PlaylistDetail({ playlist, library, onChange, onDelete }: {
               })}
               <button type="button"
                 className="grid w-full items-center gap-3 px-1 py-3 text-left text-ink-600 hover:text-ink-300 transition-colors"
-                style={{ gridTemplateColumns: "20px 20px 1fr" }}
+                style={{ gridTemplateColumns: "20px 20px 20px 1fr" }}
                 onClick={() => setAddOpen(true)}>
-                <div /><div className="flex justify-center"><Plus className="h-3.5 w-3.5" /></div>
-                <span className="text-[12.5px]">Add track…</span>
+                <div /><div /><div className="flex justify-center"><Plus className="h-3.5 w-3.5" /></div>
+                <span className="text-[12.5px]">{t("Add track…")}</span>
               </button>
             </div>
           </div>
@@ -675,6 +787,7 @@ function YouTubeToPlaylistDialog({ open, onOpenChange, onCreated }: {
   const [jobId, setJobId]               = React.useState<string | null>(null)
   const [jobItems, setJobItems]         = React.useState<APIImportItem[]>([])
   const [creating, setCreating]         = React.useState(false)
+  const { t, tn } = useI18n()
 
   const reset = () => {
     setStep("input"); setUrl(""); setPlaylistName(""); setPreviewing(false)
@@ -693,7 +806,7 @@ function YouTubeToPlaylistDialog({ open, onOpenChange, onCreated }: {
       if (result.title && !playlistName.trim()) setPlaylistName(result.title)
       setStep("preview")
     } catch (err: unknown) {
-      toast.error(`Preview failed: ${err instanceof Error ? err.message : String(err)}`)
+      toast.error(t("Preview failed: {error}", { error: err instanceof Error ? err.message : String(err) }))
     } finally {
       setPreviewing(false)
     }
@@ -702,14 +815,14 @@ function YouTubeToPlaylistDialog({ open, onOpenChange, onCreated }: {
   const handleStartDownload = async () => {
     if (!preview) return
     const items = preview.items.filter((i) => selected.has(i.ytid))
-    if (items.length === 0) { toast.error("Select at least one track"); return }
-    if (!playlistName.trim()) { toast.error("Playlist name is required"); return }
+    if (items.length === 0) { toast.error(t("Select at least one track")); return }
+    if (!playlistName.trim()) { toast.error(t("Playlist name is required")); return }
     setStep("downloading")
     try {
       const { job_id } = await api.library.ytImport({ items })
       setJobId(job_id)
     } catch (err: unknown) {
-      toast.error(`Failed to start: ${err instanceof Error ? err.message : String(err)}`)
+      toast.error(t("Failed to start: {error}", { error: err instanceof Error ? err.message : String(err) }))
       setStep("preview")
     }
   }
@@ -732,7 +845,7 @@ function YouTubeToPlaylistDialog({ open, onOpenChange, onCreated }: {
         .map((i) => i.path as string)
 
       if (paths.length === 0) {
-        toast.error("No tracks were downloaded successfully — check that yt-dlp is installed")
+        toast.error(t("No tracks were downloaded successfully — check that yt-dlp is installed"))
         setCreating(false)
         setStep("preview")
         return
@@ -749,13 +862,13 @@ function YouTubeToPlaylistDialog({ open, onOpenChange, onCreated }: {
         })
         onCreated(adaptApiPlaylist(pl))
         const label = failedCount > 0
-          ? `${paths.length} track${paths.length !== 1 ? "s" : ""} (${failedCount} failed)`
-          : `${paths.length} track${paths.length !== 1 ? "s" : ""}`
-        toast.success(`"${capturedName}" created with ${label}`)
+          ? t("{tracks} ({n} failed)", { tracks: tn(paths.length, "{n} track", "{n} tracks"), n: failedCount })
+          : tn(paths.length, "{n} track", "{n} tracks")
+        toast.success(t("\"{name}\" created with {label}", { name: capturedName, label }))
         reset()
         onOpenChange(false)
       } catch (err: unknown) {
-        toast.error(`Create playlist failed: ${err instanceof Error ? err.message : String(err)}`)
+        toast.error(t("Create playlist failed: {error}", { error: err instanceof Error ? err.message : String(err) }))
         setCreating(false)
       }
     }
@@ -803,14 +916,14 @@ function YouTubeToPlaylistDialog({ open, onOpenChange, onCreated }: {
         <div className="shrink-0 px-5 pt-5 pb-4 pr-12 border-b border-ink-800">
           <div className="flex items-center gap-2.5">
             <YtIcon className="h-4 w-4 text-red-500 shrink-0" />
-            <span className="text-[14px] font-semibold text-ink-100">Import from YouTube</span>
+            <span className="text-[14px] font-semibold text-ink-100">{t("Import from YouTube")}</span>
           </div>
           <p className="mt-1 text-[12px] text-ink-500 leading-relaxed">
-            {step === "input"       && "Paste a YouTube video or playlist URL to download audio and create a playlist."}
+            {step === "input"       && t("Paste a YouTube video or playlist URL to download audio and create a playlist.")}
             {step === "preview"     && (preview?.type === "playlist"
-              ? `${preview.items.length} tracks found — select which to download`
-              : "Video found — confirm to download")}
-            {step === "downloading" && (creating ? "Creating playlist…" : `Downloading… ${doneCount} / ${jobItems.length} done`)}
+              ? tn(preview.items.length, "{n} track found — select which to download", "{n} tracks found — select which to download")
+              : t("Video found — confirm to download"))}
+            {step === "downloading" && (creating ? t("Creating playlist…") : t("Downloading… {done} / {total} done", { done: doneCount, total: jobItems.length }))}
           </p>
         </div>
 
@@ -821,10 +934,10 @@ function YouTubeToPlaylistDialog({ open, onOpenChange, onCreated }: {
           {step === "input" && (
             <div className="px-5 py-5 space-y-4 overflow-y-auto">
               <div>
-                <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-ink-500">YouTube URL</p>
+                <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-ink-500">{t("YouTube URL")}</p>
                 <input
                   className="h-9 w-full bg-ink-950 border border-ink-800 px-3 text-[13px] text-ink-100 placeholder:text-ink-600 focus:border-k-500/50 focus:outline-none"
-                  placeholder="https://www.youtube.com/watch?v=… or /playlist?list=…"
+                  placeholder={t("https://www.youtube.com/watch?v=… or /playlist?list=…")}
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handlePreview()}
@@ -833,17 +946,17 @@ function YouTubeToPlaylistDialog({ open, onOpenChange, onCreated }: {
               </div>
               <div>
                 <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-ink-500">
-                  Playlist Name <span className="normal-case text-ink-700">(optional)</span>
+                  {t("Playlist Name")} <span className="normal-case text-ink-700">{t("(optional)")}</span>
                 </p>
                 <input
                   className="h-9 w-full bg-ink-950 border border-ink-800 px-3 text-[13px] text-ink-100 placeholder:text-ink-600 focus:border-k-500/50 focus:outline-none"
-                  placeholder="Auto-filled from YouTube title"
+                  placeholder={t("Auto-filled from YouTube title")}
                   value={playlistName}
                   onChange={(e) => setPlaylistName(e.target.value)}
                 />
               </div>
               <p className="text-[11px] text-ink-700 leading-relaxed">
-                Downloads audio as MP3. Only download content you own or have permission to use.
+                {t("Downloads audio as MP3. Only download content you own or have permission to use.")}
               </p>
             </div>
           )}
@@ -854,12 +967,12 @@ function YouTubeToPlaylistDialog({ open, onOpenChange, onCreated }: {
               {/* Fixed controls */}
               <div className="shrink-0 px-5 py-4 space-y-3 border-b border-ink-800 bg-ink-900">
                 <div>
-                  <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-ink-500">Playlist Name</p>
+                  <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-ink-500">{t("Playlist Name")}</p>
                   <input
                     className="h-9 w-full bg-ink-950 border border-ink-800 px-3 text-[13px] text-ink-100 placeholder:text-ink-600 focus:border-k-500/50 focus:outline-none"
                     value={playlistName}
                     onChange={(e) => setPlaylistName(e.target.value)}
-                    placeholder="Playlist name"
+                    placeholder={t("Playlist name")}
                   />
                 </div>
                 {preview.type === "playlist" && (
@@ -873,7 +986,7 @@ function YouTubeToPlaylistDialog({ open, onOpenChange, onCreated }: {
                     )}>
                       {selected.size === preview.items.length && <Check className="h-2.5 w-2.5 text-white" />}
                     </div>
-                    <span>{selected.size} / {preview.items.length} selected</span>
+                    <span>{t("{selected} / {total} selected", { selected: selected.size, total: preview.items.length })}</span>
                   </button>
                 )}
               </div>
@@ -885,7 +998,7 @@ function YouTubeToPlaylistDialog({ open, onOpenChange, onCreated }: {
                   return (
                     <div
                       key={item.ytid}
-                      className="flex items-center gap-3 px-5 py-2.5 border-b border-ink-800/50 last:border-0 cursor-pointer hover:bg-white/[0.025] transition-colors"
+                      className="flex items-center gap-3 px-5 py-2.5 border-b border-ink-800/50 last:border-0 cursor-pointer hover:bg-ink-100/[0.03] transition-colors"
                       onClick={() => toggleItem(item.ytid)}
                     >
                       <div className={cn(
@@ -927,7 +1040,7 @@ function YouTubeToPlaylistDialog({ open, onOpenChange, onCreated }: {
                 <div className="shrink-0 px-5 py-3 border-b border-ink-800">
                   <div className="flex items-center justify-between mb-2 text-[11.5px]">
                     <span className="text-ink-500">
-                      {doneCount} done{failCount > 0 ? ` · ${failCount} failed` : ""}{activeCount > 0 ? ` · ${activeCount} remaining` : ""}
+                      {t("{n} done", { n: doneCount })}{failCount > 0 ? " · " + t("{n} failed", { n: failCount }) : ""}{activeCount > 0 ? " · " + t("{n} remaining", { n: activeCount }) : ""}
                     </span>
                     <span className="font-mono text-ink-500 tabular-nums">{overallPct}%</span>
                   </div>
@@ -942,7 +1055,7 @@ function YouTubeToPlaylistDialog({ open, onOpenChange, onCreated }: {
                 {jobItems.length === 0 ? (
                   <div className="flex items-center gap-2.5 py-6 text-ink-500">
                     <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-                    <span className="text-[12.5px]">Starting download…</span>
+                    <span className="text-[12.5px]">{t("Starting download…")}</span>
                   </div>
                 ) : (
                   jobItems.map((item) => (
@@ -974,7 +1087,7 @@ function YouTubeToPlaylistDialog({ open, onOpenChange, onCreated }: {
                 {creating && (
                   <div className="flex items-center gap-2.5 border-t border-ink-800 pt-3 mt-2 text-ink-400">
                     <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
-                    <span className="text-[12px]">Creating playlist…</span>
+                    <span className="text-[12px]">{t("Creating playlist…")}</span>
                   </div>
                 )}
               </div>
@@ -989,7 +1102,7 @@ function YouTubeToPlaylistDialog({ open, onOpenChange, onCreated }: {
             disabled={step === "downloading"}
             className="h-9 px-4 border border-ink-800 hover:bg-ink-800 text-[13px] text-ink-200 transition-colors disabled:opacity-40"
           >
-            {step === "downloading" ? "Running…" : "Cancel"}
+            {step === "downloading" ? t("Running…") : t("Cancel")}
           </button>
           <div className="flex items-center gap-2">
             {step === "preview" && (
@@ -997,7 +1110,7 @@ function YouTubeToPlaylistDialog({ open, onOpenChange, onCreated }: {
                 onClick={() => setStep("input")}
                 className="h-9 px-3 border border-ink-800 hover:bg-ink-800 text-[12.5px] text-ink-400 transition-colors"
               >
-                ← Back
+                {t("← Back")}
               </button>
             )}
             {step === "input" && (
@@ -1007,7 +1120,7 @@ function YouTubeToPlaylistDialog({ open, onOpenChange, onCreated }: {
                 className="h-9 px-4 bg-k-500 hover:bg-k-400 disabled:opacity-50 text-white text-[13px] font-semibold transition-colors inline-flex items-center gap-2"
               >
                 {previewing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                {previewing ? "Loading…" : "Preview →"}
+                {previewing ? t("Loading…") : t("Preview →")}
               </button>
             )}
             {step === "preview" && (
@@ -1016,7 +1129,7 @@ function YouTubeToPlaylistDialog({ open, onOpenChange, onCreated }: {
                 disabled={selected.size === 0 || !playlistName.trim()}
                 className="h-9 px-4 bg-k-500 hover:bg-k-400 disabled:opacity-50 text-white text-[13px] font-semibold transition-colors"
               >
-                Download {selected.size > 0 ? `${selected.size} track${selected.size !== 1 ? "s" : ""}` : ""}
+                {selected.size > 0 ? tn(selected.size, "Download {n} track", "Download {n} tracks") : t("Download")}
               </button>
             )}
           </div>
@@ -1032,25 +1145,26 @@ function NewPlaylistDialog({ open, onOpenChange, onCreated }: {
   open: boolean; onOpenChange: (v: boolean) => void; onCreated: (name: string) => void
 }) {
   const [name, setName] = React.useState("")
+  const { t } = useI18n()
   const handleCreate = () => {
-    if (!name.trim()) { toast.error("Name is required"); return }
+    if (!name.trim()) { toast.error(t("Name is required")); return }
     onCreated(name.trim()); setName(""); onOpenChange(false)
   }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xs bg-ink-900 border-ink-800">
         <DialogHeader>
-          <DialogTitle className="text-ink-100">New Playlist</DialogTitle>
-          <DialogDescription className="text-ink-500">Give your playlist a name to get started.</DialogDescription>
+          <DialogTitle className="text-ink-100">{t("New Playlist")}</DialogTitle>
+          <DialogDescription className="text-ink-500">{t("Give your playlist a name to get started.")}</DialogDescription>
         </DialogHeader>
         <input
           className="h-9 w-full bg-ink-950 border border-ink-800 px-3 text-[13px] text-ink-100 placeholder:text-ink-600 focus:border-k-500/50 focus:outline-none"
-          placeholder="e.g. Morning Mix" value={name} onChange={(e) => setName(e.target.value)}
+          placeholder={t("e.g. Morning Mix")} value={name} onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") handleCreate() }} autoFocus
         />
         <DialogFooter>
-          <button onClick={() => onOpenChange(false)} className="h-9 px-4 border border-ink-800 hover:bg-ink-800 text-[13px] text-ink-200 transition-colors">Cancel</button>
-          <button onClick={handleCreate} className="h-9 px-4 bg-k-500 hover:bg-k-400 text-white text-[13px] font-semibold transition-colors">Create</button>
+          <button onClick={() => onOpenChange(false)} className="h-9 px-4 border border-ink-800 hover:bg-ink-800 text-[13px] text-ink-200 transition-colors">{t("Cancel")}</button>
+          <button onClick={handleCreate} className="h-9 px-4 bg-k-500 hover:bg-k-400 text-white text-[13px] font-semibold transition-colors">{t("Create")}</button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -1068,6 +1182,7 @@ export default function PlaylistsPage() {
   const [dirtyIds, setDirtyIds]     = React.useState<Set<string>>(new Set())
   const [newOpen, setNewOpen]       = React.useState(false)
   const [ytOpen, setYtOpen]         = React.useState(false)
+  const { t, tn } = useI18n()
 
   const tracksByPath = React.useMemo(() => new Map(library.map((t) => [t.path, t])), [library])
 
@@ -1104,7 +1219,7 @@ export default function PlaylistsPage() {
       setDirtyIds((d) => new Set([...d, updated.id]))
     }
     api.playlists.update(updated.id, { name: updated.name, mode: updated.mode, crossfade_ms: updated.crossfade, track_paths: updated.trackPaths })
-      .catch((err) => toast.error(`Save failed: ${err.message}`))
+      .catch((err) => toast.error(t("Save failed: {error}", { error: err.message })))
   }
 
   const deletePlaylist = (id: string) => {
@@ -1113,9 +1228,9 @@ export default function PlaylistsPage() {
         setPlaylists((prev) => prev.filter((p) => p.id !== id))
         setDirtyIds((d) => { const n = new Set(d); n.delete(id); return n })
         if (selectedId === id) setSelectedId(playlists.find((p) => p.id !== id)?.id ?? null)
-        toast.success("Playlist deleted")
+        toast.success(t("Playlist deleted"))
       })
-      .catch((err) => toast.error(`Delete failed: ${err.message}`))
+      .catch((err) => toast.error(t("Delete failed: {error}", { error: err.message })))
   }
 
   const createPlaylist = (name: string) => {
@@ -1123,23 +1238,23 @@ export default function PlaylistsPage() {
       .then((p) => {
         const newPl = adaptApiPlaylist(p)
         setPlaylists((prev) => [newPl, ...prev]); setSelectedId(newPl.id)
-        toast.success(`Playlist "${name}" created`)
+        toast.success(t("Playlist \"{name}\" created", { name }))
       })
-      .catch((err) => toast.error(`Create failed: ${err.message}`))
+      .catch((err) => toast.error(t("Create failed: {error}", { error: err.message })))
   }
 
   const handleAutoDJStart = async (mountName: string, pl: Playlist, startTrackPath?: string) => {
     await api.mounts.startAutoDJ(mountName, { playlist_id: pl.id, mode: pl.mode, start_track_path: startTrackPath })
     setPlaylists((prev) => prev.map((p) => p.id === pl.id ? { ...p, autoDJ: true, assignedMount: mountName } : p))
     setDirtyIds((d) => { const n = new Set(d); n.delete(pl.id); return n })
-    toast.success(startTrackPath ? "AutoDJ jumping to track…" : `AutoDJ started on ${mountName}`)
+    toast.success(startTrackPath ? t("AutoDJ jumping to track…") : t("AutoDJ started on {mount}", { mount: mountName }))
   }
 
   const handleAutoDJStop = async (mountName: string, pl: Playlist) => {
     await api.mounts.stopAutoDJ(mountName)
     setPlaylists((prev) => prev.map((p) => p.id === pl.id ? { ...p, autoDJ: false } : p))
     setDirtyIds((d) => { const n = new Set(d); n.delete(pl.id); return n })
-    toast.success("AutoDJ stopped")
+    toast.success(t("AutoDJ stopped"))
   }
 
   const handleAutoDJRestart = async (mountName: string, pl: Playlist) => {
@@ -1148,19 +1263,19 @@ export default function PlaylistsPage() {
       await api.mounts.startAutoDJ(mountName, { playlist_id: pl.id, mode: pl.mode })
       setPlaylists((prev) => prev.map((p) => p.id === pl.id ? { ...p, autoDJ: true, assignedMount: mountName } : p))
       setDirtyIds((d) => { const n = new Set(d); n.delete(pl.id); return n })
-      toast.success("AutoDJ restarted")
+      toast.success(t("AutoDJ restarted"))
     } catch (err: unknown) {
-      toast.error(`Restart failed: ${err instanceof Error ? err.message : String(err)}`); throw err
+      toast.error(t("Restart failed: {error}", { error: err instanceof Error ? err.message : String(err) })); throw err
     }
   }
 
   const handlePlayFrom = async (pl: Playlist, trackPath: string) => {
-    if (!pl.assignedMount) { toast.error("No mount assigned"); return }
+    if (!pl.assignedMount) { toast.error(t("No mount assigned")); return }
     try {
       await api.mounts.stopAutoDJ(pl.assignedMount).catch(() => {})
       await handleAutoDJStart(pl.assignedMount, pl, trackPath)
     } catch (err: unknown) {
-      toast.error(`Failed: ${err instanceof Error ? err.message : String(err)}`)
+      toast.error(t("Failed: {error}", { error: err instanceof Error ? err.message : String(err) }))
     }
   }
 
@@ -1170,13 +1285,13 @@ export default function PlaylistsPage() {
       {/* Playlist rail */}
       <aside className="w-60 shrink-0 flex flex-col border-r border-ink-800 bg-ink-900">
         <div className="flex shrink-0 items-center justify-between border-b border-ink-800 px-4 py-4">
-          <h2 className="text-[13px] font-semibold text-ink-100">Playlists</h2>
+          <h2 className="text-[13px] font-semibold text-ink-100">{t("Playlists")}</h2>
           <div className="flex items-center gap-1">
-            <button onClick={() => setYtOpen(true)} title="Import from YouTube"
+            <button onClick={() => setYtOpen(true)} title={t("Import from YouTube")}
               className="h-7 w-7 flex items-center justify-center border border-ink-800 hover:bg-ink-800 text-red-600/60 hover:text-red-500 transition-colors">
               <YtIcon className="h-3.5 w-3.5" />
             </button>
-            <button onClick={() => setNewOpen(true)} title="New playlist"
+            <button onClick={() => setNewOpen(true)} title={t("New playlist")}
               className="h-7 w-7 flex items-center justify-center border border-ink-800 hover:bg-ink-800 text-ink-400 hover:text-ink-200 transition-colors">
               <Plus className="h-3.5 w-3.5" />
             </button>
@@ -1186,13 +1301,13 @@ export default function PlaylistsPage() {
           {loading ? (
             <div className="flex flex-col items-center gap-2 py-12 text-ink-500">
               <ListMusic className="h-7 w-7 opacity-20 animate-pulse" />
-              <p className="text-[12px] font-mono">Loading…</p>
+              <p className="text-[12px] font-mono">{t("Loading…")}</p>
             </div>
           ) : playlists.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-12 text-center text-ink-500">
               <ListMusic className="h-7 w-7 opacity-20" />
-              <p className="text-[12px]">No playlists yet</p>
-              <button onClick={() => setNewOpen(true)} className="text-[11.5px] text-k-400 hover:text-k-300 transition-colors">Create one →</button>
+              <p className="text-[12px]">{t("No playlists yet")}</p>
+              <button onClick={() => setNewOpen(true)} className="text-[11.5px] text-k-400 hover:text-k-300 transition-colors">{t("Create one →")}</button>
             </div>
           ) : (
             playlists.map((pl) => {
@@ -1209,8 +1324,8 @@ export default function PlaylistsPage() {
                   </span>
                   <div className="mt-0.5 font-mono text-[11px] text-ink-500">
                     {trackCount > 0
-                      ? `${trackCount} track${trackCount !== 1 ? "s" : ""}${dur ? ` · ${dur}` : ""}`
-                      : "Empty"
+                      ? tn(trackCount, "{n} track", "{n} tracks") + (dur ? ` · ${dur}` : "")
+                      : t("Empty")
                     }
                   </div>
                 </button>
@@ -1231,11 +1346,11 @@ export default function PlaylistsPage() {
           <div className="flex flex-1 flex-col items-center justify-center gap-3 text-ink-500">
             <ListMusic className="h-12 w-12 opacity-20" />
             <p className="text-[13px]">
-              {loading ? "Loading…" : playlists.length === 0 ? "Create a playlist to get started" : "Select a playlist to edit"}
+              {loading ? t("Loading…") : playlists.length === 0 ? t("Create a playlist to get started") : t("Select a playlist to edit")}
             </p>
             {!loading && playlists.length === 0 && (
               <button onClick={() => setNewOpen(true)} className="text-[12px] text-k-400 hover:text-k-300 transition-colors">
-                New Playlist →
+                {t("New Playlist →")}
               </button>
             )}
           </div>

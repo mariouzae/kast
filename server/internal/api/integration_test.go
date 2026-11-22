@@ -754,3 +754,13 @@ func TestAPI_Listeners_Empty(t *testing.T) {
 	resp := env.do(t, "GET", "/api/listeners", nil, env.authHeaders())
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
+
+// ── Library: DELETE /api/library/folder ──────────────────────────────────────
+
+func TestAPI_LibraryDeleteFolder_RoutedToFolderHandler(t *testing.T) {
+	env := buildTestEnv(t)
+	resp := env.do(t, "DELETE", "/api/library/folder?path=does-not-exist", nil, env.authHeaders())
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	b, _ := io.ReadAll(resp.Body)
+	assert.Contains(t, string(b), "folder not found", "must hit DeleteFolder, not the /library/:id track route")
+}

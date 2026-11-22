@@ -6,6 +6,8 @@ import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { fetchMe, logout, type AuthUser } from "@/lib/auth"
 import { api } from "@/lib/api"
+import { ThemeToggle } from "@/components/theme-toggle"
+import { useI18n } from "@/lib/i18n"
 import {
   LayoutDashboard,
   Radio,
@@ -156,6 +158,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
   const { pendingPath } = React.useContext(NavigationContext)
   const activePath = pendingPath ?? pathname
   const user = React.useContext(UserContext)
+  const { t } = useI18n()
 
   const handleLogout = async () => {
     await logout()
@@ -194,7 +197,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
                 )}
               >
                 <Icon className="h-3.5 w-3.5 shrink-0" />
-                {item.label}
+                {t(item.label)}
               </Link>
             )
           })}
@@ -221,19 +224,20 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
         <header className="h-14 shrink-0 border-b border-ink-800 bg-ink-900 flex items-center px-6 gap-3">
           <div className="flex-1" />
           <div className="flex items-center gap-2">
+            <ThemeToggle className="mr-2" />
             <div className="flex items-center gap-2">
               <div className="h-7 w-7 bg-k-500 text-white text-[11px] font-bold flex items-center justify-center select-none uppercase">
                 {user?.username?.[0] ?? "?"}
               </div>
               <span className="text-[12px] font-mono text-ink-400">{user?.username}</span>
               {user?.role !== "admin" && (
-                <span className="text-[10px] font-mono text-ink-600 uppercase tracking-wider">{user?.role}</span>
+                <span className="text-[10px] font-mono text-ink-600 uppercase tracking-wider">{user?.role ? t(user.role) : ""}</span>
               )}
             </div>
             <button
               onClick={handleLogout}
               className="h-7 w-7 flex items-center justify-center text-ink-500 hover:text-ink-200 transition-colors"
-              title="Sign out"
+              title={t("Sign out")}
             >
               <LogOut className="h-3.5 w-3.5" />
             </button>

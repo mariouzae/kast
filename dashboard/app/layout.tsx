@@ -4,7 +4,8 @@ import { Inter, JetBrains_Mono } from "next/font/google"
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import { Toaster } from "sonner"
+import { I18nProvider } from "@/lib/i18n"
+import { Toaster } from "@/components/ui/sonner"
 import { cn } from "@/lib/utils"
 
 export const metadata: Metadata = {
@@ -42,15 +43,17 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
-      className={cn("dark antialiased", inter.variable, jetBrainsMono.variable)}
+      lang="pt-BR"
+      className={cn("antialiased", inter.variable, jetBrainsMono.variable)}
       suppressHydrationWarning
     >
       <body>
-        <ThemeProvider forcedTheme="dark" disableTransitionOnChange>
-          <TooltipProvider>
-            {children}
-          </TooltipProvider>
+        <ThemeProvider defaultTheme="light" disableTransitionOnChange>
+          <I18nProvider>
+            <TooltipProvider>
+              {children}
+            </TooltipProvider>
+          </I18nProvider>
           <Toaster richColors position="top-right" />
         </ThemeProvider>
       </body>

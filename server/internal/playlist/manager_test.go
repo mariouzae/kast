@@ -288,3 +288,36 @@ func TestPersistence_LastPlayed(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "/music/last.mp3", got.LastPlayedPath)
 }
+
+// ── RemoveTrackPath ──────────────────────────────────────────────────────────
+
+func TestRemoveTrackPath(t *testing.T) {
+	m := newManager(t)
+	a, err := m.Create(playlist.CreateRequest{Name: "A", TrackPaths: []string{"/m/1.mp3", "/m/2.mp3", "/m/1.mp3"}})
+	require.NoError(t, err)
+	b, err := m.Create(playlist.CreateRequest{Name: "B", TrackPaths: []string{"/m/3.mp3"}})
+	require.NoError(t, err)
+	require.NoError(t, m.SetLastPlayed(a.ID, "/m/1.mp3"))
+
+	require.Equal(t, 1, m.RemoveTrackPath("/m/1.mp3"))
+
+	gotA, _ := m.Get(a.ID)
+	require.Equal(t, []string{"/m/2.mp3"}, gotA.TrackPaths)
+	require.Empty(t, gotA.LastPlayedPath)
+	gotB, _ := m.Get(b.ID)
+	require.Equal(t, []string{"/m/3.mp3"}, gotB.TrackPaths)
+
+	require.Equal(t, 0, m.RemoveTrackPath("/m/none.mp3"))
+}
+
+func TestRemoveTrackPaths_CountsEachPlaylistOnce(t *testing.T) {
+	m := newManager(t)
+	a, err := m.Create(playlist.CreateRequest{Name: "A", TrackPaths: []string{"/m/1.mp3", "/m/2.mp3", "/m/3.mp3"}})
+	require.NoError(t, err)
+	_, err = m.Create(playlist.CreateRequest{Name: "B", TrackPaths: []string{"/m/9.mp3"}})
+	require.NoError(t, err)
+
+	require.Equal(t, 1, m.RemoveTrackPaths([]string{"/m/1.mp3", "/m/2.mp3"}))
+	got, _ := m.Get(a.ID)
+	require.Equal(t, []string{"/m/3.mp3"}, got.TrackPaths)
+}

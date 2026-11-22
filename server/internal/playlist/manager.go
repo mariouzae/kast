@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 
@@ -159,6 +160,40 @@ func (m *Manager) Update(id string, req UpdateRequest) (*Playlist, error) {
 	cp := *p
 	cp.TrackPaths = append([]string(nil), p.TrackPaths...)
 	return &cp, nil
+}
+
+// RemoveTrackPath drops path from every playlist that contains it (used when
+// a track is deleted from the library) and returns how many were changed.
+func (m *Manager) RemoveTrackPath(path string) int {
+	return m.RemoveTrackPaths([]string{path})
+}
+
+// RemoveTrackPaths drops all of paths from every playlist and returns how many
+// playlists were changed.
+func (m *Manager) RemoveTrackPaths(paths []string) int {
+	gone := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		gone[p] = true
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	changed := 0
+	for _, p := range m.playlists {
+		kept := slices.DeleteFunc(slices.Clone(p.TrackPaths), func(tp string) bool { return gone[tp] })
+		if len(kept) == len(p.TrackPaths) && !gone[p.LastPlayedPath] {
+			continue
+		}
+		p.TrackPaths = kept
+		if gone[p.LastPlayedPath] {
+			p.LastPlayedPath = ""
+		}
+		p.UpdatedAt = time.Now().UTC()
+		if err := m.updateDB(p); err != nil {
+			slog.Error("playlist: db update after track removal", "id", p.ID, "err", err)
+		}
+		changed++
+	}
+	return changed
 }
 
 // SetLastPlayed persists the path of the track that just started playing.

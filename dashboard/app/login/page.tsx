@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
+import { useI18n } from "@/lib/i18n"
 const WEAK_PASSWORDS = new Set([
   "admin", "password", "123456", "12345678", "1234", "test",
   "changeme", "changeme123", "pass", "qwerty", "letmein", "welcome",
@@ -15,6 +16,7 @@ type Mode = "loading" | "setup" | "login"
 
 export default function LoginPage() {
   const router  = useRouter()
+  const { t } = useI18n()
   const [mode, setMode]         = React.useState<Mode>("loading")
   const [username, setUsername] = React.useState("")
   const [password, setPassword] = React.useState("")
@@ -47,12 +49,13 @@ export default function LoginPage() {
       })
       const json = await res.json()
       if (!res.ok) {
-        setError(json.error ?? "Something went wrong.")
+        // Server messages are shown translated when known, otherwise as sent.
+        setError(t(json.error ?? "Something went wrong."))
         return
       }
       router.replace("/dashboard")
     } catch {
-      setError("Could not connect to server.")
+      setError(t("Could not connect to server."))
     } finally {
       setLoading(false)
     }
@@ -63,7 +66,7 @@ export default function LoginPage() {
     setError(null)
 
     if (mode === "setup" && password !== confirm) {
-      setError("Passwords do not match.")
+      setError(t("Passwords do not match."))
       return
     }
 
@@ -97,16 +100,16 @@ export default function LoginPage() {
         </div>
 
         <h1 className="text-[22px] font-bold text-ink-100 tracking-tight mb-1">
-          {isSetup ? "Create admin account" : "Sign in"}
+          {isSetup ? t("Create admin account") : t("Sign in")}
         </h1>
         <p className="text-[13px] text-ink-500 font-mono mb-8">
-          {isSetup ? "First run — set up your admin credentials." : "Admin dashboard"}
+          {isSetup ? t("First run — set up your admin credentials.") : t("Admin dashboard")}
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-[11px] font-mono uppercase tracking-wider text-ink-500 mb-1.5">
-              Username
+              {t("Username")}
             </label>
             <input
               type="text"
@@ -121,7 +124,7 @@ export default function LoginPage() {
 
           <div>
             <label className="block text-[11px] font-mono uppercase tracking-wider text-ink-500 mb-1.5">
-              Password
+              {t("Password")}
             </label>
             <input
               type="password"
@@ -136,7 +139,7 @@ export default function LoginPage() {
           {isSetup && (
             <div>
               <label className="block text-[11px] font-mono uppercase tracking-wider text-ink-500 mb-1.5">
-                Confirm password
+                {t("Confirm password")}
               </label>
               <input
                 type="password"
@@ -152,7 +155,7 @@ export default function LoginPage() {
           {weakWarn && (
             <div className="border border-amber-500/30 bg-amber-500/5 px-3 py-3 space-y-2">
               <p className="text-[12px] text-amber-400 font-mono">
-                This is a commonly used credential. Anyone who knows your username can guess it.
+                {t("This is a commonly used credential. Anyone who knows your username can guess it.")}
               </p>
               <div className="flex gap-2">
                 <button
@@ -160,14 +163,14 @@ export default function LoginPage() {
                   onClick={doSubmit}
                   className="text-[11px] font-mono text-amber-400 border border-amber-500/30 px-2.5 py-1 hover:bg-amber-500/10 transition-colors"
                 >
-                  Use anyway
+                  {t("Use anyway")}
                 </button>
                 <button
                   type="button"
                   onClick={() => { setWeakWarn(false); setPassword(""); setConfirm("") }}
                   className="text-[11px] font-mono text-ink-400 border border-ink-700 px-2.5 py-1 hover:bg-ink-800 transition-colors"
                 >
-                  Change password
+                  {t("Change password")}
                 </button>
               </div>
             </div>
@@ -185,8 +188,8 @@ export default function LoginPage() {
             className="w-full bg-k-500 hover:bg-k-600 text-white font-mono text-[13px] font-semibold py-2.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading
-              ? (isSetup ? "Creating…" : "Signing in…")
-              : (isSetup ? "Create account & sign in" : "Sign in")
+              ? (isSetup ? t("Creating…") : t("Signing in…"))
+              : (isSetup ? t("Create account & sign in") : t("Sign in"))
             }
           </button>
         </form>

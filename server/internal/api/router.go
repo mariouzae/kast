@@ -288,7 +288,7 @@ func NewApp(
 	api.Delete("/users/:id", adminOnly, uh.Delete)
 
 	mh := &handler.Mounts{Manager: mounts, DJManager: djm, Webhooks: webhooks}
-	lh := &handler.Library{Scanner: scanner, UploadDir: scanner.PrimaryUploadDir()}
+	lh := &handler.Library{Scanner: scanner, Playlists: playlists, UploadDir: scanner.PrimaryUploadDir()}
 	plh := &handler.Playlists{Manager: playlists, Webhooks: webhooks}
 	djh := &handler.AutoDJ{DJManager: djm, Playlists: playlists, Scanner: scanner, Webhooks: webhooks}
 	sh := &handler.Settings{Cfg: cfg, ConfigPath: configPath, LogLevel: logLevel}
@@ -365,6 +365,10 @@ func NewApp(
 	api.Get("/library/:id/download", lh.Download)
 	api.Patch("/library/:id", lh.Update)
 	api.Delete("/library/:id/override", lh.ResetOverride)
+	api.Post("/library/delete", middleware.RequireRole(authmanager.RoleAdmin, authmanager.RoleOperator), lh.DeleteMany)
+	// Registered before /library/:id so "folder" is not taken as a track ID.
+	api.Delete("/library/folder", middleware.RequireRole(authmanager.RoleAdmin, authmanager.RoleOperator), lh.DeleteFolder)
+	api.Delete("/library/:id", middleware.RequireRole(authmanager.RoleAdmin, authmanager.RoleOperator), lh.Delete)
 	api.Post("/library/scan", lh.Scan)
 	api.Post("/library/upload", lh.Upload)
 	api.Post("/library/import/youtube/preview", yth.Preview)

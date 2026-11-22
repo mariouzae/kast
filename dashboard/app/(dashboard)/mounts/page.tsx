@@ -10,6 +10,7 @@ import { Plus, Search, Copy, ChevronRight } from "lucide-react"
 import { toast } from "sonner"
 import { api, type APIMount } from "@/lib/api"
 import { SettingsContext } from "@/app/(dashboard)/layout"
+import { useI18n } from "@/lib/i18n"
 
 // ── Types ──
 
@@ -83,6 +84,7 @@ function CreateMountDialog({ onCreated }: { onCreated: (m: Mount) => void }) {
   const [description, setDescription]       = React.useState("")
   const [genre, setGenre]                   = React.useState("")
   const [loading, setLoading]               = React.useState(false)
+  const { t } = useI18n()
 
   const reset = () => { setName(""); setSourcePassword(""); setDescription(""); setGenre(""); setBitrate("128k"); setCodec("AAC"); setProtocol("HLS") }
 
@@ -91,8 +93,8 @@ function CreateMountDialog({ onCreated }: { onCreated: (m: Mount) => void }) {
     setLoading(true)
     const normalized = name.startsWith("/") ? name : "/" + name
     api.mounts.create({ name: normalized, source_password: sourcePassword, bitrate, codec, protocol, description, genre })
-      .then((m) => { onCreated(adaptApiMount(m)); toast.success(`Mount ${normalized} created`); setOpen(false); reset() })
-      .catch((err) => toast.error(`Create failed: ${err.message}`))
+      .then((m) => { onCreated(adaptApiMount(m)); toast.success(t("Mount {name} created", { name: normalized })); setOpen(false); reset() })
+      .catch((err) => toast.error(t("Create failed: {error}", { error: err.message })))
       .finally(() => setLoading(false))
   }
 
@@ -102,7 +104,7 @@ function CreateMountDialog({ onCreated }: { onCreated: (m: Mount) => void }) {
     <>
       <button onClick={() => setOpen(true)}
         className="h-9 px-3.5 bg-k-500 hover:bg-k-400 text-white text-[13px] font-semibold inline-flex items-center gap-1.5 transition-colors">
-        <Plus className="h-3.5 w-3.5" /> New Mount
+        <Plus className="h-3.5 w-3.5" /> {t("New Mount")}
       </button>
 
       {open && (
@@ -110,17 +112,17 @@ function CreateMountDialog({ onCreated }: { onCreated: (m: Mount) => void }) {
           onClick={(e) => { if (e.target === e.currentTarget) { setOpen(false); reset() } }}>
           <div className="w-full max-w-md rounded-lg border border-ink-800 bg-ink-900 p-5 space-y-4">
             <div>
-              <h2 className="text-[15px] font-semibold text-ink-100">New Mount</h2>
-              <p className="text-[12px] text-ink-500 mt-0.5">Create a new stream endpoint</p>
+              <h2 className="text-[15px] font-semibold text-ink-100">{t("New Mount")}</h2>
+              <p className="text-[12px] text-ink-500 mt-0.5">{t("Create a new stream endpoint")}</p>
             </div>
             <div className="space-y-3">
               <div className="space-y-1">
-                <label className="text-[11px] uppercase tracking-wider text-ink-500 font-mono">Mount Name *</label>
+                <label className="text-[11px] uppercase tracking-wider text-ink-500 font-mono">{t("Mount Name *")}</label>
                 <input className={cn(inputCls, "font-mono")} placeholder="/radio1" value={name} onChange={(e) => setName(e.target.value)} />
               </div>
               <div className="space-y-1">
-                <label className="text-[11px] uppercase tracking-wider text-ink-500 font-mono">Source Password *</label>
-                <input className={inputCls} type="password" placeholder="min 8 characters" value={sourcePassword} onChange={(e) => setSourcePassword(e.target.value)} />
+                <label className="text-[11px] uppercase tracking-wider text-ink-500 font-mono">{t("Source Password *")}</label>
+                <input className={inputCls} type="password" placeholder={t("min 8 characters")} value={sourcePassword} onChange={(e) => setSourcePassword(e.target.value)} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
@@ -131,7 +133,7 @@ function CreateMountDialog({ onCreated }: { onCreated: (m: Mount) => void }) {
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[11px] uppercase tracking-wider text-ink-500 font-mono">Bitrate</label>
+                  <label className="text-[11px] uppercase tracking-wider text-ink-500 font-mono">{t("Bitrate")}</label>
                   <Select value={bitrate} onValueChange={setBitrate}>
                     <SelectTrigger className="h-8 bg-ink-950 border-ink-800 text-ink-100"><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -141,29 +143,29 @@ function CreateMountDialog({ onCreated }: { onCreated: (m: Mount) => void }) {
                 </div>
               </div>
               <div className="space-y-1">
-                <label className="text-[11px] uppercase tracking-wider text-ink-500 font-mono">Protocol</label>
+                <label className="text-[11px] uppercase tracking-wider text-ink-500 font-mono">{t("Protocol")}</label>
                 <Select value={protocol} onValueChange={setProtocol}>
                   <SelectTrigger className="h-8 bg-ink-950 border-ink-800 text-ink-100"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="HLS">HLS — standard latency (6–15s)</SelectItem>
-                    <SelectItem value="LL-HLS">LL-HLS — low latency (1–3s)</SelectItem>
+                    <SelectItem value="HLS">{t("HLS — standard latency (6–15s)")}</SelectItem>
+                    <SelectItem value="LL-HLS">{t("LL-HLS — low latency (1–3s)")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1">
-                <label className="text-[11px] uppercase tracking-wider text-ink-500 font-mono">Description</label>
-                <input className={inputCls} placeholder="Optional" value={description} onChange={(e) => setDescription(e.target.value)} />
+                <label className="text-[11px] uppercase tracking-wider text-ink-500 font-mono">{t("Description")}</label>
+                <input className={inputCls} placeholder={t("Optional")} value={description} onChange={(e) => setDescription(e.target.value)} />
               </div>
               <div className="space-y-1">
-                <label className="text-[11px] uppercase tracking-wider text-ink-500 font-mono">Genre</label>
-                <input className={inputCls} placeholder="Optional" value={genre} onChange={(e) => setGenre(e.target.value)} />
+                <label className="text-[11px] uppercase tracking-wider text-ink-500 font-mono">{t("Genre")}</label>
+                <input className={inputCls} placeholder={t("Optional")} value={genre} onChange={(e) => setGenre(e.target.value)} />
               </div>
             </div>
             <div className="flex justify-end gap-2 pt-1">
-              <button onClick={() => { setOpen(false); reset() }} className="h-9 px-4 rounded-md border border-ink-800 hover:bg-ink-800 text-[13px] text-ink-200 transition-colors">Cancel</button>
+              <button onClick={() => { setOpen(false); reset() }} className="h-9 px-4 rounded-md border border-ink-800 hover:bg-ink-800 text-[13px] text-ink-200 transition-colors">{t("Cancel")}</button>
               <button onClick={handleCreate} disabled={!name || sourcePassword.length < 8 || loading}
                 className="h-9 px-4 bg-k-500 hover:bg-k-400 disabled:opacity-50 text-white text-[13px] font-semibold transition-colors">
-                {loading ? "Creating…" : "Create"}
+                {loading ? t("Creating…") : t("Create")}
               </button>
             </div>
           </div>
@@ -208,6 +210,7 @@ const POLL_INTERVAL = 5_000
 export default function MountsPage() {
   const router = useRouter()
   const { publicUrl } = React.useContext(SettingsContext)
+  const { t, tn } = useI18n()
   const [mounts, setMounts]             = React.useState<Mount[]>([])
   const [loading, setLoading]           = React.useState(true)
   const [search, setSearch]             = React.useState("")
@@ -229,7 +232,7 @@ export default function MountsPage() {
             return next
           })
         })
-        .catch((err) => toast.error(`Failed to load mounts: ${err.message}`))
+        .catch((err) => toast.error(t("Failed to load mounts: {error}", { error: err.message })))
         .finally(() => setLoading(false))
     load()
     const id = setInterval(load, POLL_INTERVAL)
@@ -252,9 +255,9 @@ export default function MountsPage() {
       {/* Page header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-[24px] font-bold tracking-tight text-ink-100">Mounts</h1>
+          <h1 className="text-[24px] font-bold tracking-tight text-ink-100">{t("Mounts")}</h1>
           <p className="mt-1 text-[12.5px] text-ink-400">
-            {mounts.length} mount{mounts.length !== 1 ? "s" : ""} · {liveCount} live · stream endpoints &amp; source connections
+            {tn(mounts.length, "{n} mount", "{n} mounts")} · {t("{n} live", { n: liveCount })} · {t("stream endpoints & source connections")}
           </p>
         </div>
         <CreateMountDialog onCreated={(m) => setMounts((prev) => [m, ...prev])} />
@@ -266,7 +269,7 @@ export default function MountsPage() {
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-500 h-3.5 w-3.5" />
           <input
             className="h-8 w-full bg-transparent border border-ink-800 rounded-md pl-8 pr-3 text-[12px] text-ink-100 placeholder:text-ink-600 focus:border-k-500/50 focus:outline-none"
-            placeholder="Search mounts…"
+            placeholder={t("Search mounts…")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -279,7 +282,7 @@ export default function MountsPage() {
                 className={cn("px-2.5 py-1 rounded capitalize transition-colors",
                   statusFilter === f ? "bg-ink-800 text-ink-100 font-medium" : "text-ink-400 hover:text-ink-200"
                 )}>
-                {f} <span className="text-ink-500 ml-1">{count}</span>
+                {t(f === "all" ? "All" : f === "live" ? "Live" : "Idle")} <span className="text-ink-500 ml-1">{count}</span>
               </button>
             )
           })}
@@ -289,18 +292,18 @@ export default function MountsPage() {
       {/* Table */}
       <div className="mt-5 border-t border-ink-800">
         <div className="grid grid-cols-[minmax(0,1.4fr)_80px_140px_minmax(0,1fr)_60px_64px] gap-3 px-1 py-2 text-[10.5px] uppercase tracking-wider text-ink-500 font-mono border-b border-ink-800">
-          <div>Mount</div><div>Protocol</div><div>Codec / Bitrate</div>
-          <div>Activity</div><div className="text-right">Lsnr</div><div />
+          <div>{t("Mount")}</div><div>{t("Protocol")}</div><div>{t("Codec / Bitrate")}</div>
+          <div>{t("Activity")}</div><div className="text-right">{t("Lsnr")}</div><div />
         </div>
 
         {loading ? (
           <div className="py-16 flex flex-col items-center gap-2 text-ink-500">
             <div className="h-8 w-8 rounded-full border-2 border-ink-800 border-t-k-500 animate-spin" />
-            <p className="text-[12px] font-mono mt-1">Loading mounts…</p>
+            <p className="text-[12px] font-mono mt-1">{t("Loading mounts…")}</p>
           </div>
         ) : filtered.length === 0 ? (
           <div className="py-16 flex flex-col items-center gap-2 text-ink-500">
-            <p className="text-[12.5px]">{mounts.length === 0 ? "No mounts yet — click \"New Mount\" above" : "No mounts match your filters"}</p>
+            <p className="text-[12.5px]">{mounts.length === 0 ? t("No mounts yet — click \"New Mount\" above") : t("No mounts match your filters")}</p>
           </div>
         ) : (
           filtered.map((mount) => (
@@ -315,10 +318,10 @@ export default function MountsPage() {
                   <div className="flex items-center gap-1.5">
                     <span className="font-mono text-[13.5px] text-ink-100 truncate">{mount.name}</span>
                     {mount.protocol === "LL-HLS" && (
-                      <span className="text-[9.5px] px-1.5 py-px rounded bg-k-500/10 border border-k-500/30 text-k-300 font-mono shrink-0">low-latency</span>
+                      <span className="text-[9.5px] px-1.5 py-px rounded bg-k-500/10 border border-k-500/30 text-k-300 font-mono shrink-0">{t("low-latency")}</span>
                     )}
                   </div>
-                  <div className="text-[11px] text-ink-500 font-mono mt-0.5">created {mount.created}</div>
+                  <div className="text-[11px] text-ink-500 font-mono mt-0.5">{t("created {date}", { date: mount.created })}</div>
                 </div>
               </div>
               <span className={cn("text-[11px] font-mono", mount.protocol === "LL-HLS" ? "text-k-400" : "text-ink-300")}>
@@ -330,10 +333,10 @@ export default function MountsPage() {
               <Sparkline data={mountHistory[mount.id] ?? [mount.listeners]} />
               <span className="text-right text-[12.5px] font-mono text-ink-100">{mount.listeners}</span>
               <div className="row-actions flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
-                <KBtn title="Copy HLS URL" onClick={() => {
+                <KBtn title={t("Copy HLS URL")} onClick={() => {
                   const base = (publicUrl || `${window.location.protocol}//${window.location.hostname}:8080`).replace(/\/$/, "")
                   navigator.clipboard.writeText(`${base}/hls/${toSlug(mount.name)}/index.m3u8`)
-                  toast.success("Copied")
+                  toast.success(t("Copied"))
                 }}>
                   <Copy className="h-3 w-3" />
                 </KBtn>

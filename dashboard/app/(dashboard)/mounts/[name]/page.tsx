@@ -24,6 +24,7 @@ import {
 const BITRATE_OPTIONS = ["64k", "96k", "128k", "192k", "256k", "320k"] as const
 import { type Mount, adaptApiMount, PulseDot, KBtn } from "../page"
 import { SettingsContext } from "@/app/(dashboard)/layout"
+import { useI18n, type TFunc } from "@/lib/i18n"
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -34,6 +35,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 }
 
 function CopyRow({ label, value }: { label: string; value: string }) {
+  const { t } = useI18n()
   return (
     <div className="flex items-center justify-between gap-2 rounded-md border border-ink-800 bg-ink-950/50 px-3 py-2">
       <div className="min-w-0">
@@ -41,8 +43,8 @@ function CopyRow({ label, value }: { label: string; value: string }) {
         <p className="truncate font-mono text-[11.5px] text-ink-200">{value}</p>
       </div>
       <KBtn
-        title="Copy"
-        onClick={() => { navigator.clipboard.writeText(value); toast.success("Copied") }}
+        title={t("Copy")}
+        onClick={() => { navigator.clipboard.writeText(value); toast.success(t("Copied")) }}
       >
         <Copy className="h-3 w-3" />
       </KBtn>
@@ -66,14 +68,14 @@ function countryFlag(code: string): string {
   if (!code || code.length !== 2) return ""
   return [...code.toUpperCase()].map(c => String.fromCodePoint(0x1F1E6 + c.charCodeAt(0) - 65)).join("")
 }
-function countryName(code: string): string {
-  try { return new Intl.DisplayNames(["en"], { type: "region" }).of(code) ?? code } catch { return code }
+function countryName(code: string, lang: string): string {
+  try { return new Intl.DisplayNames([lang], { type: "region" }).of(code) ?? code } catch { return code }
 }
-function timeAgo(iso: string): string {
+function timeAgo(iso: string, t: TFunc): string {
   const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
-  if (diff < 5)  return "just now"
-  if (diff < 60) return `${diff}s ago`
-  return `${Math.floor(diff / 60)}m ago`
+  if (diff < 5)  return t("just now")
+  if (diff < 60) return t("{n}s ago", { n: diff })
+  return t("{n}m ago", { n: Math.floor(diff / 60) })
 }
 
 function fmtListeningDuration(iso: string): string {
@@ -114,6 +116,7 @@ function MountInfoTab({ mount, nowPlaying, onRefreshNowPlaying, history, onUpdat
   onUpdated: (patch: Partial<Mount>) => void
 }) {
   const { publicUrl } = React.useContext(SettingsContext)
+  const { t } = useI18n()
   const base = (publicUrl || (typeof window !== "undefined" ? `${window.location.protocol}//${window.location.hostname}:8080` : "")).replace(/\/$/, "")
   const slug = mount.name.replace(/^\/+/, "")
 
@@ -142,7 +145,7 @@ function MountInfoTab({ mount, nowPlaying, onRefreshNowPlaying, history, onUpdat
     }
     api.mounts.updateMetadata(mount.name, body)
       .then((updated) => {
-        toast.success(updated.autodj_restarted ? "Mount updated — AutoDJ restarted" : "Mount updated")
+        toast.success(updated.autodj_restarted ? t("Mount updated — AutoDJ restarted") : t("Mount updated"))
         onUpdated({
           description: updated.description, genre: updated.genre,
           website: updated.website, codec: updated.codec,
@@ -150,7 +153,7 @@ function MountInfoTab({ mount, nowPlaying, onRefreshNowPlaying, history, onUpdat
         })
         setEditing(false)
       })
-      .catch((err) => toast.error(`Save failed: ${err.message}`))
+      .catch((err) => toast.error(t("Save failed: {error}", { error: err.message })))
       .finally(() => setSaving(false))
   }
 
@@ -162,30 +165,30 @@ function MountInfoTab({ mount, nowPlaying, onRefreshNowPlaying, history, onUpdat
     <div className="space-y-5">
       {/* Now Playing */}
       <div>
-        <SectionLabel>Now Playing</SectionLabel>
+        <SectionLabel>{t("Now Playing")}</SectionLabel>
         <div className="rounded-md border border-ink-800 bg-ink-950/40 px-3 py-3">
           <div className="flex items-center justify-between">
             {nowPlaying ? (
               <div className="flex items-center gap-2 min-w-0">
                 <Music2 className="h-3.5 w-3.5 shrink-0 text-k-400" />
                 <div className="min-w-0">
-                  <p className="truncate text-[13px] font-medium text-ink-100">{nowPlaying.title || "Unknown"}</p>
-                  <p className="truncate text-[11px] text-ink-500">{nowPlaying.artist || "Unknown"}</p>
+                  <p className="truncate text-[13px] font-medium text-ink-100">{nowPlaying.title || t("Unknown")}</p>
+                  <p className="truncate text-[11px] text-ink-500">{nowPlaying.artist || t("Unknown")}</p>
                 </div>
               </div>
             ) : (
-              <p className="text-[12px] text-ink-500">Nothing playing — start AutoDJ</p>
+              <p className="text-[12px] text-ink-500">{t("Nothing playing — start AutoDJ")}</p>
             )}
             {nowPlaying && (
               <button
                 className="h-7 px-2.5 rounded-md bg-ink-800 hover:bg-ink-700 text-[11.5px] text-ink-200 inline-flex items-center gap-1.5 transition-colors shrink-0 ml-2"
                 onClick={() =>
                   api.mounts.skipTrack(mount.name)
-                    .then(() => { toast.success("Skipped"); setTimeout(onRefreshNowPlaying, 300); setTimeout(onRefreshNowPlaying, 1200) })
-                    .catch((err) => toast.error(`Skip failed: ${err.message}`))
+                    .then(() => { toast.success(t("Skipped")); setTimeout(onRefreshNowPlaying, 300); setTimeout(onRefreshNowPlaying, 1200) })
+                    .catch((err) => toast.error(t("Skip failed: {error}", { error: err.message })))
                 }
               >
-                <SkipForward className="h-3 w-3" /> Skip
+                <SkipForward className="h-3 w-3" /> {t("Skip")}
               </button>
             )}
           </div>
@@ -195,20 +198,20 @@ function MountInfoTab({ mount, nowPlaying, onRefreshNowPlaying, history, onUpdat
       {/* Metadata */}
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <SectionLabel>Metadata</SectionLabel>
+          <SectionLabel>{t("Metadata")}</SectionLabel>
           {!editing ? (
             <button
               onClick={openEdit}
               className="inline-flex items-center gap-1 text-[11px] text-ink-500 hover:text-ink-200 transition-colors font-mono"
             >
-              <Pencil className="h-3 w-3" /> Edit
+              <Pencil className="h-3 w-3" /> {t("Edit")}
             </button>
           ) : (
             <button
               onClick={cancelEdit}
               className="inline-flex items-center gap-1 text-[11px] text-ink-500 hover:text-ink-200 transition-colors font-mono"
             >
-              <X className="h-3 w-3" /> Cancel
+              <X className="h-3 w-3" /> {t("Cancel")}
             </button>
           )}
         </div>
@@ -218,21 +221,21 @@ function MountInfoTab({ mount, nowPlaying, onRefreshNowPlaying, history, onUpdat
             {/* Read-only rows */}
             {[["Name", mount.name], ["Created", mount.created]].map(([k, v]) => (
               <div key={k} className="flex justify-between text-[12px]">
-                <span className="text-ink-500">{k}</span>
+                <span className="text-ink-500">{t(k)}</span>
                 <span className="text-ink-200 font-mono truncate max-w-[300px]">{v}</span>
               </div>
             ))}
             <div className="pt-1 space-y-2">
               <div className="space-y-1">
-                <p className="text-[10.5px] uppercase tracking-wider text-ink-600 font-mono">Description</p>
-                <input className={inputCls} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Station description" />
+                <p className="text-[10.5px] uppercase tracking-wider text-ink-600 font-mono">{t("Description")}</p>
+                <input className={inputCls} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={t("Station description")} />
               </div>
               <div className="space-y-1">
-                <p className="text-[10.5px] uppercase tracking-wider text-ink-600 font-mono">Genre</p>
-                <input className={inputCls} value={genre} onChange={(e) => setGenre(e.target.value)} placeholder="e.g. Jazz, Electronic…" />
+                <p className="text-[10.5px] uppercase tracking-wider text-ink-600 font-mono">{t("Genre")}</p>
+                <input className={inputCls} value={genre} onChange={(e) => setGenre(e.target.value)} placeholder={t("e.g. Jazz, Electronic…")} />
               </div>
               <div className="space-y-1">
-                <p className="text-[10.5px] uppercase tracking-wider text-ink-600 font-mono">Website</p>
+                <p className="text-[10.5px] uppercase tracking-wider text-ink-600 font-mono">{t("Website")}</p>
                 <input className={inputCls} value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://…" />
               </div>
             </div>
@@ -245,7 +248,7 @@ function MountInfoTab({ mount, nowPlaying, onRefreshNowPlaying, history, onUpdat
               ["Created", mount.created],
             ].map(([k, v]) => (
               <div key={k} className="flex justify-between text-[12px]">
-                <span className="text-ink-500">{k}</span>
+                <span className="text-ink-500">{t(k)}</span>
                 <span className="text-ink-200 font-mono truncate max-w-[300px]">{v}</span>
               </div>
             ))}
@@ -257,7 +260,7 @@ function MountInfoTab({ mount, nowPlaying, onRefreshNowPlaying, history, onUpdat
 
       {/* Audio */}
       <div>
-        <SectionLabel>Audio</SectionLabel>
+        <SectionLabel>{t("Audio")}</SectionLabel>
         {editing ? (
           <div className="space-y-2">
             <div className="space-y-1">
@@ -274,7 +277,7 @@ function MountInfoTab({ mount, nowPlaying, onRefreshNowPlaying, history, onUpdat
               </Select>
             </div>
             <div className="space-y-1">
-              <p className="text-[10.5px] uppercase tracking-wider text-ink-600 font-mono">Bitrate</p>
+              <p className="text-[10.5px] uppercase tracking-wider text-ink-600 font-mono">{t("Bitrate")}</p>
               <Select value={bitrate} onValueChange={setBitrate}>
                 <SelectTrigger className="bg-ink-950 border-ink-800 text-ink-100 focus:ring-k-500/30 h-8 text-[12.5px]">
                   <SelectValue />
@@ -287,7 +290,7 @@ function MountInfoTab({ mount, nowPlaying, onRefreshNowPlaying, history, onUpdat
               </Select>
             </div>
             <div className="space-y-1">
-              <p className="text-[10.5px] uppercase tracking-wider text-ink-600 font-mono">Protocol</p>
+              <p className="text-[10.5px] uppercase tracking-wider text-ink-600 font-mono">{t("Protocol")}</p>
               <Select value={protocol} onValueChange={setProtocol}>
                 <SelectTrigger className="bg-ink-950 border-ink-800 text-ink-100 focus:ring-k-500/30 h-8 text-[12.5px]">
                   <SelectValue />
@@ -301,7 +304,7 @@ function MountInfoTab({ mount, nowPlaying, onRefreshNowPlaying, history, onUpdat
             {audioChanged && (
               <p className="flex items-center gap-1.5 text-[11px] text-amber-400/80 font-mono">
                 <TriangleAlert className="h-3 w-3 shrink-0" />
-                Codec, bitrate veya protocol değişirse AutoDJ yeniden başlar.
+                {t("Changing the codec, bitrate or protocol restarts AutoDJ.")}
               </p>
             )}
           </div>
@@ -309,7 +312,7 @@ function MountInfoTab({ mount, nowPlaying, onRefreshNowPlaying, history, onUpdat
           <div className="space-y-1.5">
             {[["Codec", mount.codec], ["Bitrate", mount.bitrate], ["Protocol", mount.protocol]].map(([k, v]) => (
               <div key={k} className="flex justify-between text-[12px]">
-                <span className="text-ink-500">{k}</span>
+                <span className="text-ink-500">{t(k)}</span>
                 <span className="text-ink-200 font-mono">{v}</span>
               </div>
             ))}
@@ -323,7 +326,7 @@ function MountInfoTab({ mount, nowPlaying, onRefreshNowPlaying, history, onUpdat
           className="w-full h-9 bg-k-500 hover:bg-k-400 disabled:opacity-50 text-white text-[13px] font-semibold inline-flex items-center justify-center gap-1.5 transition-colors rounded-md"
         >
           <Check className="h-3.5 w-3.5" />
-          {saving ? "Saving…" : "Save Changes"}
+          {saving ? t("Saving…") : t("Save Changes")}
         </button>
       )}
 
@@ -331,11 +334,11 @@ function MountInfoTab({ mount, nowPlaying, onRefreshNowPlaying, history, onUpdat
 
       {/* URLs */}
       <div>
-        <SectionLabel>Endpoint URLs</SectionLabel>
+        <SectionLabel>{t("Endpoint URLs")}</SectionLabel>
         <div className="space-y-2">
-          <CopyRow label="Public player" value={`${typeof window !== "undefined" ? window.location.origin : ""}/listen/${slug}`} />
-          <CopyRow label="HLS playlist" value={`${base}/hls/${slug}/index.m3u8`} />
-          <CopyRow label="Source input" value={`${base}/source/${slug}`} />
+          <CopyRow label={t("Public player")} value={`${typeof window !== "undefined" ? window.location.origin : ""}/listen/${slug}`} />
+          <CopyRow label={t("HLS playlist")} value={`${base}/hls/${slug}/index.m3u8`} />
+          <CopyRow label={t("Source input")} value={`${base}/source/${slug}`} />
         </div>
       </div>
 
@@ -344,17 +347,17 @@ function MountInfoTab({ mount, nowPlaying, onRefreshNowPlaying, history, onUpdat
         <>
           <div className="border-t border-ink-800" />
           <div>
-            <SectionLabel>Recently Played</SectionLabel>
+            <SectionLabel>{t("Recently Played")}</SectionLabel>
             <div className="space-y-1">
-              {history.map((t, i) => (
+              {history.map((tr, i) => (
                 <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-md border border-ink-800 bg-ink-950/30">
                   <span className="text-[11px] font-mono text-ink-600 w-4 shrink-0 text-right">{i + 1}</span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[12px] text-ink-200">{t.title || "Unknown"}</p>
-                    <p className="truncate text-[11px] text-ink-500">{t.artist || "—"}</p>
+                    <p className="truncate text-[12px] text-ink-200">{tr.title || t("Unknown")}</p>
+                    <p className="truncate text-[11px] text-ink-500">{tr.artist || "—"}</p>
                   </div>
-                  {t.duration_ms > 0 && (
-                    <span className="text-[10.5px] font-mono text-ink-600 shrink-0">{fmtDuration(t.duration_ms)}</span>
+                  {tr.duration_ms > 0 && (
+                    <span className="text-[10.5px] font-mono text-ink-600 shrink-0">{fmtDuration(tr.duration_ms)}</span>
                   )}
                 </div>
               ))}
@@ -368,6 +371,7 @@ function MountInfoTab({ mount, nowPlaying, onRefreshNowPlaying, history, onUpdat
 
 function MountListenersTab({ mount }: { mount: Mount }) {
   const [listeners, setListeners] = React.useState<APIListener[] | null>(null)
+  const { t, tn, lang } = useI18n()
 
   React.useEffect(() => {
     const load = () =>
@@ -386,7 +390,7 @@ function MountListenersTab({ mount }: { mount: Mount }) {
       <div className="flex items-center gap-2">
         <span className="inline-flex items-center gap-1.5 text-[12px] font-mono text-ink-300">
           <Users className="h-3.5 w-3.5 text-ink-500" />
-          {count} listener{count !== 1 ? "s" : ""} connected
+          {tn(count, "{n} listener connected", "{n} listeners connected")}
         </span>
       </div>
 
@@ -397,12 +401,12 @@ function MountListenersTab({ mount }: { mount: Mount }) {
       ) : listeners.length === 0 ? (
         <div className="flex flex-col items-center gap-2 py-10 text-ink-500">
           <Users className="h-8 w-8 opacity-20" />
-          <p className="text-[12px]">No active listeners on this mount</p>
+          <p className="text-[12px]">{t("No active listeners on this mount")}</p>
         </div>
       ) : (
         <div className="border-t border-ink-800">
           <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1.1fr)_80px_60px] gap-3 px-1 py-2 text-[10.5px] uppercase tracking-wider text-ink-500 font-mono border-b border-ink-800">
-            <div>IP</div><div>Location</div><div>Client</div><div className="text-right">Since</div>
+            <div>IP</div><div>{t("Location")}</div><div>{t("Client")}</div><div className="text-right">{t("Since")}</div>
           </div>
           {listeners.map((l, i) => (
             <div key={`${l.ip}-${i}`}
@@ -410,15 +414,15 @@ function MountListenersTab({ mount }: { mount: Mount }) {
               <span className="font-mono text-[12.5px] text-ink-100 truncate" title={l.ip}>{l.ip}</span>
               <span className="text-[12px] font-mono truncate">
                 {isPrivate(l.ip)
-                  ? <span className="text-ink-500">Local</span>
+                  ? <span className="text-ink-500">{t("Local")}</span>
                   : l.country_code
-                    ? <span className="flex items-center gap-1.5"><span>{countryFlag(l.country_code)}</span><span className="text-ink-300">{countryName(l.country_code)}</span></span>
+                    ? <span className="flex items-center gap-1.5"><span>{countryFlag(l.country_code)}</span><span className="text-ink-300">{countryName(l.country_code, lang)}</span></span>
                     : <span className="text-ink-600">—</span>
                 }
               </span>
               <span className="font-mono text-[11.5px] text-ink-400 truncate" title={l.user_agent || undefined}>{parseUA(l.user_agent)}</span>
               <span className="text-right text-[11px] text-ink-500 font-mono">
-                {l.connected_at ? fmtListeningDuration(l.connected_at) : timeAgo(l.last_seen)}
+                {l.connected_at ? fmtListeningDuration(l.connected_at) : timeAgo(l.last_seen, t)}
               </span>
             </div>
           ))}
@@ -450,6 +454,7 @@ function MountPlayerTab({ mount, onUpdated }: { mount: Mount; onUpdated: (patch:
   const [showHistory, setShowHistory]     = React.useState(mount.playerShowHistory)
   const [showPlaylist, setShowPlaylist]   = React.useState(mount.playerShowPlaylist)
   const [saving, setSaving]               = React.useState(false)
+  const { t } = useI18n()
 
   const slug = mount.name.replace(/^\/+/, "")
   const playerUrl = typeof window !== "undefined" ? `${window.location.origin}/listen/${slug}` : `/listen/${slug}`
@@ -463,12 +468,12 @@ function MountPlayerTab({ mount, onUpdated }: { mount: Mount; onUpdated: (patch:
     }
     api.mounts.updatePlayerConfig(mount.name, body)
       .then(() => {
-        toast.success("Player settings saved")
+        toast.success(t("Player settings saved"))
         onUpdated({ playerStationName: stationName, playerAccent: accent, playerAccentSoft: accentSoft,
           playerTheme: theme, playerLayout: layout, playerAmbient: ambient,
           playerShowAbout: showAbout, playerShowHistory: showHistory, playerShowPlaylist: showPlaylist })
       })
-      .catch((err) => toast.error(`Save failed: ${err.message}`))
+      .catch((err) => toast.error(t("Save failed: {error}", { error: err.message })))
       .finally(() => setSaving(false))
   }
 
@@ -477,17 +482,17 @@ function MountPlayerTab({ mount, onUpdated }: { mount: Mount; onUpdated: (patch:
       {/* Player URL */}
       <div className="flex items-center gap-2 rounded-md border border-ink-800 bg-ink-950/40 px-3 py-2">
         <div className="min-w-0 flex-1">
-          <p className="text-[10px] uppercase tracking-wide text-ink-500 font-mono">Player URL</p>
+          <p className="text-[10px] uppercase tracking-wide text-ink-500 font-mono">{t("Player URL")}</p>
           <p className="truncate font-mono text-[11.5px] text-ink-200">{playerUrl}</p>
         </div>
         <button onClick={() => window.open(playerUrl, "_blank")} className="h-7 px-2 rounded-md hover:bg-ink-800 text-[11.5px] text-ink-400 hover:text-ink-200 transition-colors shrink-0">
-          Open ↗
+          {t("Open ↗")}
         </button>
       </div>
 
       {/* Station name */}
       <div className="space-y-1.5">
-        <SectionLabel>Display Name</SectionLabel>
+        <SectionLabel>{t("Display Name")}</SectionLabel>
         <input
           className="h-8 w-full bg-ink-950 border border-ink-800 rounded-md px-3 text-[12.5px] text-ink-100 placeholder:text-ink-600 focus:border-k-500/50 focus:outline-none"
           placeholder={slug.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
@@ -498,14 +503,14 @@ function MountPlayerTab({ mount, onUpdated }: { mount: Mount; onUpdated: (patch:
 
       {/* Theme */}
       <div className="space-y-1.5">
-        <SectionLabel>Theme</SectionLabel>
+        <SectionLabel>{t("Theme")}</SectionLabel>
         <div className="flex gap-2">
-          {(["dark", "light"] as const).map((t) => (
-            <button key={t} onClick={() => setTheme(t)}
-              className={cn("flex-1 rounded-md border py-1.5 text-[12px] capitalize transition-colors",
-                theme === t ? "border-ink-300 bg-ink-800 text-ink-100 font-medium" : "border-ink-800 text-ink-500 hover:border-ink-700"
+          {(["dark", "light"] as const).map((th) => (
+            <button key={th} onClick={() => setTheme(th)}
+              className={cn("flex-1 rounded-md border py-1.5 text-[12px] transition-colors",
+                theme === th ? "border-ink-300 bg-ink-800 text-ink-100 font-medium" : "border-ink-800 text-ink-500 hover:border-ink-700"
               )}>
-              {t}
+              {th === "dark" ? t("Dark") : t("Light")}
             </button>
           ))}
         </div>
@@ -513,14 +518,14 @@ function MountPlayerTab({ mount, onUpdated }: { mount: Mount; onUpdated: (patch:
 
       {/* Layout */}
       <div className="space-y-1.5">
-        <SectionLabel>Layout</SectionLabel>
+        <SectionLabel>{t("Layout")}</SectionLabel>
         <div className="flex gap-2">
           {(["split", "centered"] as const).map((l) => (
             <button key={l} onClick={() => setLayout(l)}
-              className={cn("flex-1 rounded-md border py-1.5 text-[12px] capitalize transition-colors",
+              className={cn("flex-1 rounded-md border py-1.5 text-[12px] transition-colors",
                 layout === l ? "border-ink-300 bg-ink-800 text-ink-100 font-medium" : "border-ink-800 text-ink-500 hover:border-ink-700"
               )}>
-              {l}
+              {l === "split" ? t("Split") : t("Centered")}
             </button>
           ))}
         </div>
@@ -528,7 +533,7 @@ function MountPlayerTab({ mount, onUpdated }: { mount: Mount; onUpdated: (patch:
 
       {/* Accent */}
       <div className="space-y-1.5">
-        <SectionLabel>Accent Color</SectionLabel>
+        <SectionLabel>{t("Accent Color")}</SectionLabel>
         <div className="grid grid-cols-8 gap-1.5">
           {ACCENT_OPTIONS.map((c) => (
             <button key={c.value} onClick={() => { setAccent(c.value); setAccentSoft(c.soft) }} title={c.name}
@@ -542,7 +547,7 @@ function MountPlayerTab({ mount, onUpdated }: { mount: Mount; onUpdated: (patch:
 
       {/* Toggles */}
       <div className="space-y-2">
-        <SectionLabel>Options</SectionLabel>
+        <SectionLabel>{t("Options")}</SectionLabel>
         {[
           { label: "Ambient glow",         value: ambient,      set: setAmbient },
           { label: "Show about section",   value: showAbout,    set: setShowAbout },
@@ -550,7 +555,7 @@ function MountPlayerTab({ mount, onUpdated }: { mount: Mount; onUpdated: (patch:
           { label: "Show playlist",        value: showPlaylist, set: setShowPlaylist },
         ].map(({ label, value, set }) => (
           <div key={label} className="flex items-center justify-between rounded-md border border-ink-800 px-3 py-2.5">
-            <span className="text-[12.5px] text-ink-200">{label}</span>
+            <span className="text-[12.5px] text-ink-200">{t(label)}</span>
             <button onClick={() => set(!value)}
               className={cn("relative h-5 w-9 rounded-full transition-colors", value ? "bg-k-500" : "bg-ink-700")}>
               <span className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all", value ? "left-[18px]" : "left-0.5")} />
@@ -564,7 +569,7 @@ function MountPlayerTab({ mount, onUpdated }: { mount: Mount; onUpdated: (patch:
         className="w-full h-9 bg-k-500 hover:bg-k-400 disabled:opacity-50 text-white text-[13px] font-semibold inline-flex items-center justify-center gap-1.5 transition-colors"
       >
         <Palette className="h-3.5 w-3.5" />
-        {saving ? "Saving…" : "Save Player Settings"}
+        {saving ? t("Saving…") : t("Save Player Settings")}
       </button>
     </div>
   )
@@ -579,6 +584,7 @@ function MountAutoDJTab({ mount }: { mount: Mount }) {
   const [acting, setActing]                     = React.useState(false)
   const [trackData, setTrackData]               = React.useState<APIAutoDJTracks | null>(null)
   const nowPlayingRowRef                        = React.useRef<HTMLDivElement | null>(null)
+  const { t, tn, tx } = useI18n()
 
   // Jingle/ad insertion. Saved on the mount, applied on next AutoDJ start.
   const [jinglePlaylistId,   setJinglePlaylistId]   = React.useState(mount.jinglePlaylistId)
@@ -626,16 +632,16 @@ function MountAutoDJTab({ mount }: { mount: Mount }) {
     if (!selectedPlaylist) return
     setActing(true)
     api.mounts.startAutoDJ(mount.name, { playlist_id: selectedPlaylist, mode })
-      .then(() => { setSession({ mount: mount.name, playlist_id: selectedPlaylist, mode }); toast.success("AutoDJ started") })
-      .catch((err) => toast.error(`Failed: ${err.message}`))
+      .then(() => { setSession({ mount: mount.name, playlist_id: selectedPlaylist, mode }); toast.success(t("AutoDJ started")) })
+      .catch((err) => toast.error(t("Failed: {error}", { error: err.message })))
       .finally(() => setActing(false))
   }
 
   const handleStop = () => {
     setActing(true)
     api.mounts.stopAutoDJ(mount.name)
-      .then(() => { setSession(null); toast.success("AutoDJ stopped") })
-      .catch((err) => toast.error(`Failed: ${err.message}`))
+      .then(() => { setSession(null); toast.success(t("AutoDJ stopped")) })
+      .catch((err) => toast.error(t("Failed: {error}", { error: err.message })))
       .finally(() => setActing(false))
   }
 
@@ -644,8 +650,8 @@ function MountAutoDJTab({ mount }: { mount: Mount }) {
     setActing(true)
     api.mounts.stopAutoDJ(mount.name).catch(() => {})
       .then(() => api.mounts.startAutoDJ(mount.name, { playlist_id: selectedPlaylist, mode }))
-      .then(() => { setSession({ mount: mount.name, playlist_id: selectedPlaylist, mode }); toast.success("AutoDJ restarted") })
-      .catch((err) => toast.error(`Failed: ${err.message}`))
+      .then(() => { setSession({ mount: mount.name, playlist_id: selectedPlaylist, mode }); toast.success(t("AutoDJ restarted")) })
+      .catch((err) => toast.error(t("Failed: {error}", { error: err.message })))
       .finally(() => setActing(false))
   }
 
@@ -662,24 +668,24 @@ function MountAutoDJTab({ mount }: { mount: Mount }) {
         mount.jingleEveryTracks  = body.jingle_every_tracks
         mount.jingleEveryMinutes = body.jingle_every_minutes
         const msg = body.jingle_playlist_id && (body.jingle_every_tracks > 0 || body.jingle_every_minutes > 0)
-          ? "Jingle settings saved" : "Jingles disabled"
-        toast.success(msg + (isRunning ? " — restart AutoDJ to apply" : ""))
+          ? t("Jingle settings saved") : t("Jingles disabled")
+        toast.success(isRunning ? t("{message} — restart AutoDJ to apply", { message: msg }) : msg)
       })
-      .catch((err) => toast.error(`Failed: ${err.message}`))
+      .catch((err) => toast.error(t("Failed: {error}", { error: err.message })))
       .finally(() => setJingleSaving(false))
   }
 
   const jingleConfigured = !!mount.jinglePlaylistId && (mount.jingleEveryTracks > 0 || mount.jingleEveryMinutes > 0)
   const jingleSummary = jingleConfigured
     ? [
-        mount.jingleEveryTracks  > 0 ? `every ${mount.jingleEveryTracks} track${mount.jingleEveryTracks  !== 1 ? "s" : ""}` : null,
-        mount.jingleEveryMinutes > 0 ? `every ${mount.jingleEveryMinutes} min`                                              : null,
-      ].filter(Boolean).join(" or ")
+        mount.jingleEveryTracks  > 0 ? tn(mount.jingleEveryTracks, "every {n} track", "every {n} tracks") : null,
+        mount.jingleEveryMinutes > 0 ? t("every {n} min", { n: mount.jingleEveryMinutes })              : null,
+      ].filter(Boolean).join(t(" or "))
     : ""
   const jinglePlaylistName = playlists.find((p) => p.id === mount.jinglePlaylistId)?.name ?? ""
 
   if (loading) return (
-    <div className="flex items-center justify-center py-12 text-[12px] text-ink-500 font-mono">Loading…</div>
+    <div className="flex items-center justify-center py-12 text-[12px] text-ink-500 font-mono">{t("Loading…")}</div>
   )
 
   return (
@@ -687,16 +693,19 @@ function MountAutoDJTab({ mount }: { mount: Mount }) {
       {/* Status */}
       <div className="flex items-center justify-between rounded-md border border-ink-800 bg-ink-950/40 px-3 py-3">
         <div>
-          <p className="text-[10.5px] uppercase tracking-wider text-ink-500 font-mono mb-1">Status</p>
+          <p className="text-[10.5px] uppercase tracking-wider text-ink-500 font-mono mb-1">{t("Status")}</p>
           {isRunning && activePlaylist && (
             <p className="text-[12px] text-ink-300">
-              Playing <span className="text-ink-100 font-medium">{activePlaylist.name}</span> · {mode}
+              {tx("Playing {playlist} · {mode}", {
+                playlist: <span className="text-ink-100 font-medium">{activePlaylist.name}</span>,
+                mode: mode === "shuffle" ? t("Shuffle") : t("Sequential"),
+              })}
             </p>
           )}
-          {!isRunning && <p className="text-[12px] text-ink-500">Not running</p>}
+          {!isRunning && <p className="text-[12px] text-ink-500">{t("Not running")}</p>}
           {isRunning && jingleConfigured && (
             <p className="mt-0.5 text-[11px] text-ink-500">
-              Jingles: <span className="text-ink-300">{jinglePlaylistName || "—"}</span> · {jingleSummary}
+              {t("Jingles:")} <span className="text-ink-300">{jinglePlaylistName || "—"}</span> · {jingleSummary}
             </p>
           )}
         </div>
@@ -704,21 +713,21 @@ function MountAutoDJTab({ mount }: { mount: Mount }) {
           "text-[11px] font-mono px-2 py-0.5 rounded border",
           isRunning ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : "border-ink-700 text-ink-500"
         )}>
-          {isRunning ? "Running" : "Stopped"}
+          {isRunning ? t("Running") : t("Stopped")}
         </span>
       </div>
 
       {/* Playlist browser */}
       {isRunning && trackData && trackData.tracks.length > 0 && (
         <div className="space-y-1.5">
-          <SectionLabel>Playlist ({trackData.tracks.length} tracks)</SectionLabel>
+          <SectionLabel>{tn(trackData.tracks.length, "Playlist ({n} track)", "Playlist ({n} tracks)")}</SectionLabel>
           <div className="rounded-md border border-ink-800 overflow-hidden">
             <div className="max-h-64 overflow-y-auto">
-              {trackData.tracks.map((t, i) => {
-                const isNow = t.id === trackData.now_playing_id
+              {trackData.tracks.map((tr, i) => {
+                const isNow = tr.id === trackData.now_playing_id
                 return (
                   <div
-                    key={t.id + i}
+                    key={tr.id + i}
                     ref={isNow ? nowPlayingRowRef : null}
                     className={cn(
                       "group relative flex items-center gap-2 px-3 py-2 border-b border-ink-800/50 last:border-0",
@@ -729,42 +738,42 @@ function MountAutoDJTab({ mount }: { mount: Mount }) {
                       {isNow ? <Music2 className="h-3 w-3 text-k-400 inline" /> : i + 1}
                     </span>
                     <div className="flex-1 min-w-0">
-                      <p className={cn("truncate text-[12px]", isNow ? "text-k-300 font-medium" : "text-ink-200")}>{t.title || "Unknown"}</p>
-                      <p className="truncate text-[10.5px] text-ink-500">{t.artist || "—"}</p>
+                      <p className={cn("truncate text-[12px]", isNow ? "text-k-300 font-medium" : "text-ink-200")}>{tr.title || t("Unknown")}</p>
+                      <p className="truncate text-[10.5px] text-ink-500">{tr.artist || "—"}</p>
                     </div>
-                    {t.duration_ms > 0 && (
+                    {tr.duration_ms > 0 && (
                       <span className="text-[10.5px] font-mono text-ink-600 shrink-0 group-hover:opacity-0 transition-opacity">
-                        {fmtDuration(t.duration_ms)}
+                        {fmtDuration(tr.duration_ms)}
                       </span>
                     )}
                     <div className="absolute right-2 inset-y-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
-                        title="Jump to this track"
+                        title={t("Jump to this track")}
                         onClick={() =>
                           api.mounts.jumpToTrack(mount.name, i)
                             .then(() => {
-                              toast.success(`Jumping to "${t.title || "track"}"`)
+                              toast.success(t("Jumping to \"{title}\"", { title: tr.title || t("track") }))
                               setTimeout(() => api.mounts.autoDJTracks(mount.name).then(setTrackData).catch(() => {}), 700)
                             })
-                            .catch((err) => toast.error(`Jump failed: ${err.message}`))
+                            .catch((err) => toast.error(t("Jump failed: {error}", { error: err.message })))
                         }
                         className="h-6 px-2 rounded bg-ink-700 hover:bg-k-500 text-ink-200 text-[11px] font-mono flex items-center gap-1 transition-colors"
                       >
-                        <SkipForward className="h-3 w-3" /> Jump
+                        <SkipForward className="h-3 w-3" /> {t("Jump")}
                       </button>
                       <button
-                        title="Play after current track"
+                        title={t("Play after current track")}
                         onClick={() =>
-                          api.mounts.insertNext(mount.name, t.id)
+                          api.mounts.insertNext(mount.name, tr.id)
                             .then(() => {
-                              toast.success(`Queued "${t.title || "track"}"`)
+                              toast.success(t("Queued \"{title}\"", { title: tr.title || t("track") }))
                               api.mounts.autoDJTracks(mount.name).then(setTrackData).catch(() => {})
                             })
-                            .catch((err) => toast.error(`Queue failed: ${err.message}`))
+                            .catch((err) => toast.error(t("Queue failed: {error}", { error: err.message })))
                         }
                         className="h-6 px-2 rounded bg-ink-700 hover:bg-ink-600 text-ink-200 text-[11px] font-mono flex items-center gap-1 transition-colors"
                       >
-                        <Plus className="h-3 w-3" /> Next
+                        <Plus className="h-3 w-3" /> {t("Next")}
                       </button>
                     </div>
                   </div>
@@ -776,17 +785,17 @@ function MountAutoDJTab({ mount }: { mount: Mount }) {
           {/* One-shot queue */}
           {trackData.queue.length > 0 && (
             <div className="mt-1">
-              <p className="text-[10.5px] uppercase tracking-wider text-ink-500 font-mono mb-1">Up Next (one-shot)</p>
+              <p className="text-[10.5px] uppercase tracking-wider text-ink-500 font-mono mb-1">{t("Up Next (one-shot)")}</p>
               <div className="rounded-md border border-ink-800/60 bg-ink-950/30 divide-y divide-ink-800/40">
-                {trackData.queue.map((t, i) => (
+                {trackData.queue.map((tr, i) => (
                   <div key={i} className="flex items-center gap-2 px-3 py-2">
                     <span className="text-[10.5px] font-mono text-ink-600 w-4 shrink-0">{i + 1}</span>
                     <div className="flex-1 min-w-0">
-                      <p className="truncate text-[11.5px] text-ink-300">{t.title || "Unknown"}</p>
-                      <p className="truncate text-[10.5px] text-ink-500">{t.artist || "—"}</p>
+                      <p className="truncate text-[11.5px] text-ink-300">{tr.title || t("Unknown")}</p>
+                      <p className="truncate text-[10.5px] text-ink-500">{tr.artist || "—"}</p>
                     </div>
-                    {t.duration_ms > 0 && (
-                      <span className="text-[10.5px] font-mono text-ink-600 shrink-0">{fmtDuration(t.duration_ms)}</span>
+                    {tr.duration_ms > 0 && (
+                      <span className="text-[10.5px] font-mono text-ink-600 shrink-0">{fmtDuration(tr.duration_ms)}</span>
                     )}
                   </div>
                 ))}
@@ -798,18 +807,18 @@ function MountAutoDJTab({ mount }: { mount: Mount }) {
 
       {/* Playlist */}
       <div className="space-y-1.5">
-        <SectionLabel>Playlist</SectionLabel>
+        <SectionLabel>{t("Playlist")}</SectionLabel>
         {playlists.length === 0 ? (
-          <p className="text-[12px] text-ink-500">No playlists — create one from the Playlists page</p>
+          <p className="text-[12px] text-ink-500">{t("No playlists — create one from the Playlists page")}</p>
         ) : (
           <Select value={selectedPlaylist} onValueChange={setSelectedPlaylist} disabled={acting}>
             <SelectTrigger className="bg-ink-950 border-ink-800 text-ink-100 focus:ring-k-500/30">
-              <SelectValue placeholder="Select a playlist…" />
+              <SelectValue placeholder={t("Select a playlist…")} />
             </SelectTrigger>
             <SelectContent>
               {playlists.map((pl) => (
                 <SelectItem key={pl.id} value={pl.id}>
-                  {pl.name} <span className="text-ink-500 ml-1 text-xs">{pl.track_paths?.length ?? 0} tracks</span>
+                  {pl.name} <span className="text-ink-500 ml-1 text-xs">{tn(pl.track_paths?.length ?? 0, "{n} track", "{n} tracks")}</span>
                 </SelectItem>
               ))}
             </SelectContent>
@@ -819,14 +828,14 @@ function MountAutoDJTab({ mount }: { mount: Mount }) {
 
       {/* Mode */}
       <div className="space-y-1.5">
-        <SectionLabel>Mode</SectionLabel>
+        <SectionLabel>{t("Mode")}</SectionLabel>
         <div className="flex gap-2">
           {(["shuffle", "sequential"] as const).map((m) => (
             <button key={m} onClick={() => setMode(m)} disabled={acting}
-              className={cn("flex-1 rounded-md border py-1.5 text-[12px] capitalize transition-colors",
+              className={cn("flex-1 rounded-md border py-1.5 text-[12px] transition-colors",
                 mode === m ? "border-ink-300 bg-ink-800 text-ink-100 font-medium" : "border-ink-800 text-ink-500 hover:border-ink-700"
               )}>
-              {m}
+              {m === "shuffle" ? t("Shuffle") : t("Sequential")}
             </button>
           ))}
         </div>
@@ -834,24 +843,24 @@ function MountAutoDJTab({ mount }: { mount: Mount }) {
 
       {/* Jingles & Ads */}
       <div className="space-y-2.5">
-        <SectionLabel>Jingles &amp; Ads</SectionLabel>
+        <SectionLabel>{t("Jingles & Ads")}</SectionLabel>
         <div className="rounded-md border border-ink-800 bg-ink-950/40 p-3 space-y-3">
           <div className="space-y-1">
-            <p className="text-[10.5px] uppercase tracking-wider text-ink-500 font-mono">Source playlist</p>
+            <p className="text-[10.5px] uppercase tracking-wider text-ink-500 font-mono">{t("Source playlist")}</p>
             <Select
               value={jinglePlaylistId || "__none__"}
               onValueChange={(v) => setJinglePlaylistId(v === "__none__" ? "" : v)}
               disabled={jingleSaving}
             >
               <SelectTrigger className="bg-ink-950 border-ink-800 text-ink-100 focus:ring-k-500/30 h-8 text-[12.5px]">
-                <SelectValue placeholder="None — disabled" />
+                <SelectValue placeholder={t("None — disabled")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="__none__">None — disabled</SelectItem>
+                <SelectItem value="__none__">{t("None — disabled")}</SelectItem>
                 {playlists.map((pl) => (
                   <SelectItem key={pl.id} value={pl.id}>
                     {pl.name}{" "}
-                    <span className="text-ink-500 ml-1 text-xs">{pl.track_paths?.length ?? 0} tracks</span>
+                    <span className="text-ink-500 ml-1 text-xs">{tn(pl.track_paths?.length ?? 0, "{n} track", "{n} tracks")}</span>
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -860,7 +869,7 @@ function MountAutoDJTab({ mount }: { mount: Mount }) {
 
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
-              <p className="text-[10.5px] uppercase tracking-wider text-ink-500 font-mono">Every N tracks</p>
+              <p className="text-[10.5px] uppercase tracking-wider text-ink-500 font-mono">{t("Every N tracks")}</p>
               <input
                 type="number" min={0} max={999}
                 value={jingleEveryTracks === 0 ? "" : jingleEveryTracks}
@@ -870,11 +879,11 @@ function MountAutoDJTab({ mount }: { mount: Mount }) {
                 }}
                 disabled={jingleSaving || !jinglePlaylistId}
                 className="h-8 w-full bg-ink-950 border border-ink-800 px-2 text-[12.5px] text-ink-100 placeholder:text-ink-600 focus:border-k-500/50 focus:outline-none disabled:opacity-50"
-                placeholder="0 = off"
+                placeholder={t("0 = off")}
               />
             </div>
             <div className="space-y-1">
-              <p className="text-[10.5px] uppercase tracking-wider text-ink-500 font-mono">Every N minutes</p>
+              <p className="text-[10.5px] uppercase tracking-wider text-ink-500 font-mono">{t("Every N minutes")}</p>
               <input
                 type="number" min={0} max={999}
                 value={jingleEveryMinutes === 0 ? "" : jingleEveryMinutes}
@@ -884,26 +893,25 @@ function MountAutoDJTab({ mount }: { mount: Mount }) {
                 }}
                 disabled={jingleSaving || !jinglePlaylistId}
                 className="h-8 w-full bg-ink-950 border border-ink-800 px-2 text-[12.5px] text-ink-100 placeholder:text-ink-600 focus:border-k-500/50 focus:outline-none disabled:opacity-50"
-                placeholder="0 = off"
+                placeholder={t("0 = off")}
               />
             </div>
           </div>
 
           <p className="text-[11px] text-ink-500 leading-relaxed">
-            Inserts one track from the source playlist whichever cadence fires first.
-            Both counters reset after every insertion. Changes apply on next AutoDJ start.
+            {t("Inserts one track from the source playlist whichever cadence fires first. Both counters reset after every insertion. Changes apply on next AutoDJ start.")}
           </p>
 
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] text-ink-500">
-              {jingleDirty ? "Unsaved changes" : isRunning && jingleConfigured ? "Restart AutoDJ to apply" : ""}
+              {jingleDirty ? t("Unsaved changes") : isRunning && jingleConfigured ? t("Restart AutoDJ to apply") : ""}
             </span>
             <button
               onClick={handleJingleSave}
               disabled={jingleSaving || !jingleDirty}
               className="h-8 px-3 bg-k-500 hover:bg-k-400 disabled:opacity-50 text-white text-[12.5px] font-semibold transition-colors"
             >
-              {jingleSaving ? "Saving…" : "Save jingle settings"}
+              {jingleSaving ? t("Saving…") : t("Save jingle settings")}
             </button>
           </div>
         </div>
@@ -915,17 +923,17 @@ function MountAutoDJTab({ mount }: { mount: Mount }) {
           <>
             <button onClick={handleStop} disabled={acting}
               className="flex-1 h-9 rounded-md border border-ink-800 hover:bg-ink-800 text-ink-200 text-[13px] font-medium transition-colors disabled:opacity-50">
-              Stop
+              {t("Stop")}
             </button>
             <button onClick={handleRestart} disabled={acting || !selectedPlaylist}
               className="flex-1 h-9 bg-k-500 hover:bg-k-400 text-white text-[13px] font-semibold transition-colors disabled:opacity-50">
-              {acting ? "…" : "Restart"}
+              {acting ? "…" : t("Restart")}
             </button>
           </>
         ) : (
           <button onClick={handleStart} disabled={acting || !selectedPlaylist}
             className="w-full h-9 bg-k-500 hover:bg-k-400 text-white text-[13px] font-semibold transition-colors disabled:opacity-50">
-            {acting ? "Starting…" : "Start AutoDJ"}
+            {acting ? t("Starting…") : t("Start AutoDJ")}
           </button>
         )}
       </div>
@@ -934,35 +942,35 @@ function MountAutoDJTab({ mount }: { mount: Mount }) {
 }
 
 function MountDangerTab({ mount, onDeleted }: { mount: Mount; onDeleted: () => void }) {
+  const { t } = useI18n()
   return (
     <div>
       <div className="rounded-md border border-red-500/20 bg-red-500/5 p-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-[13px] font-medium text-red-400">Delete Mount</p>
-            <p className="text-[11.5px] text-ink-500 mt-0.5">Permanently removes mount and disconnects all listeners.</p>
+            <p className="text-[13px] font-medium text-red-400">{t("Delete Mount")}</p>
+            <p className="text-[11.5px] text-ink-500 mt-0.5">{t("Permanently removes mount and disconnects all listeners.")}</p>
           </div>
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <button className="h-8 px-3 rounded-md bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-400 text-[12.5px] font-medium transition-colors shrink-0">
-                Delete
+                {t("Delete")}
               </button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Delete {mount.name}?</AlertDialogTitle>
+                <AlertDialogTitle>{t("Delete {name}?", { name: mount.name })}</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This will permanently remove the mount and disconnect all listeners.
-                  Any running AutoDJ session will also be stopped.
+                  {t("This will permanently remove the mount and disconnect all listeners. Any running AutoDJ session will also be stopped.")}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogCancel>{t("Cancel")}</AlertDialogCancel>
                 <AlertDialogAction variant="destructive" onClick={() =>
                   api.mounts.delete(mount.name)
-                    .then(() => { toast.success(`Mount ${mount.name} deleted`); onDeleted() })
-                    .catch((err) => toast.error(`Delete failed: ${err.message}`))
-                }>Delete</AlertDialogAction>
+                    .then(() => { toast.success(t("Mount {name} deleted", { name: mount.name })); onDeleted() })
+                    .catch((err) => toast.error(t("Delete failed: {error}", { error: err.message })))
+                }>{t("Delete")}</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
@@ -984,6 +992,7 @@ export default function MountDetailPage() {
   const [history, setHistory]       = React.useState<APIAutoDJTrackInfo[]>([])
   const [loading, setLoading]       = React.useState(true)
   const [error, setError]           = React.useState<string | null>(null)
+  const { t } = useI18n()
 
   React.useEffect(() => {
     api.mounts.get(mountName)
@@ -1015,7 +1024,7 @@ export default function MountDetailPage() {
         onClick={() => router.push("/mounts")}
         className="mb-6 inline-flex items-center gap-1.5 text-[12px] text-ink-500 hover:text-ink-200 font-mono transition-colors"
       >
-        <ArrowLeft className="h-3.5 w-3.5" /> Mounts
+        <ArrowLeft className="h-3.5 w-3.5" /> {t("Mounts")}
       </button>
 
       {loading && (
@@ -1043,12 +1052,12 @@ export default function MountDetailPage() {
                   mount.status === "error" ? "border-red-500/30 bg-red-500/10 text-red-400" :
                   "border-ink-700 text-ink-500"
                 )}>
-                  {mount.status}
+                  {t(mount.status === "live" ? "Live" : mount.status === "error" ? "Error" : "Idle")}
                 </span>
               </div>
               <p className="mt-1 text-[12.5px] text-ink-400 font-mono">
                 {mount.protocol} · {mount.codec} · {mount.bitrate}
-                {mount.listeners > 0 && <span className="text-emerald-400 ml-3">{mount.listeners} listening</span>}
+                {mount.listeners > 0 && <span className="text-emerald-400 ml-3">{t("{n} listening", { n: mount.listeners })}</span>}
               </p>
             </div>
             <PulseDot status={mount.status} />
@@ -1057,18 +1066,18 @@ export default function MountDetailPage() {
           {/* Tabs */}
           <Tabs defaultValue="info">
             <TabsList variant="line" className="w-full justify-start border-b border-ink-800 bg-transparent mb-6">
-              <TabsTrigger value="info">Info</TabsTrigger>
+              <TabsTrigger value="info">{t("Info")}</TabsTrigger>
               <TabsTrigger value="autodj">AutoDJ</TabsTrigger>
-              <TabsTrigger value="player">Player</TabsTrigger>
+              <TabsTrigger value="player">{t("Player")}</TabsTrigger>
               <TabsTrigger value="listeners">
-                Listeners
+                {t("Listeners")}
                 {mount.listeners > 0 && (
                   <span className="ml-1.5 inline-flex items-center justify-center h-4 px-1.5 rounded bg-ink-800 text-[10px] font-mono text-ink-300">
                     {mount.listeners}
                   </span>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="danger" className="text-red-400/70 data-[state=active]:text-red-400">Danger</TabsTrigger>
+              <TabsTrigger value="danger" className="text-red-400/70 data-[state=active]:text-red-400">{t("Danger")}</TabsTrigger>
             </TabsList>
 
             <TabsContent value="info">

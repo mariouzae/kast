@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -31,6 +32,10 @@ type Track struct {
 	Bitrate        int       `json:"bitrate_kbps"`
 	SizeBytes      int64     `json:"size_bytes"`
 	Folder         string    `json:"folder"`
+	// RelFolder is Folder relative to its library root ("" = top level), using
+	// "/" separators. With several scan dirs it is prefixed by the root's name.
+	// Computed on load/scan; not persisted.
+	RelFolder string `json:"rel_folder"`
 	AddedAt        time.Time `json:"added_at"`
 	HasOverride    bool      `json:"has_override"`
 	OriginalTitle  string    `json:"original_title,omitempty"`
@@ -125,6 +130,154 @@ func (s *Scanner) UpdateTrack(id, title, artist, album, genre string) (*Track, e
 	return &out, nil
 }
 
+// ErrTrackNotFound is returned when no track has the requested ID.
+var ErrTrackNotFound = errors.New("track not found")
+
+// DeleteTrack removes the track with the given ID from the library: the audio
+// file is deleted from disk, its index and metadata-override rows are removed,
+// and any folders left empty by the deletion are pruned (never the scan root).
+// The file must live inside one of the scanner's directories.
+func (s *Scanner) DeleteTrack(id string) (*Track, error) {
+	s.mu.Lock()
+	idx := slices.IndexFunc(s.tracks, func(t *Track) bool { return t.ID == id })
+	if idx < 0 {
+		s.mu.Unlock()
+		return nil, ErrTrackNotFound
+	}
+	target := s.tracks[idx]
+	root := s.rootFor(target.Path)
+	if root == "" {
+		s.mu.Unlock()
+		return nil, fmt.Errorf("library: refusing to delete file outside library folders: %s", target.Path)
+	}
+	if err := os.Remove(target.Path); err != nil && !os.IsNotExist(err) {
+		s.mu.Unlock()
+		return nil, fmt.Errorf("library: delete file: %w", err)
+	}
+	s.tracks = slices.Delete(slices.Clone(s.tracks), idx, idx+1)
+	if _, err := s.db.Exec("DELETE FROM tracks WHERE id = ?", id); err != nil {
+		slog.Warn("library: delete track row", "id", id, "err", err)
+	}
+	if _, err := s.db.Exec("DELETE FROM track_overrides WHERE path = ?", target.Path); err != nil {
+		slog.Warn("library: delete override row", "path", target.Path, "err", err)
+	}
+	s.mu.Unlock()
+
+	// Prune now-empty parent folders up to (not including) the scan root.
+	// os.Remove fails on non-empty directories, which ends the walk.
+	for dir := filepath.Dir(target.Path); dir != root && strings.HasPrefix(dir, root+string(filepath.Separator)); dir = filepath.Dir(dir) {
+		if os.Remove(dir) != nil {
+			break
+		}
+	}
+
+	slog.Info("library: track deleted", "path", target.Path)
+	out := *target
+	return &out, nil
+}
+
+// ErrFolderNotFound is returned when a relative folder does not exist.
+var ErrFolderNotFound = errors.New("folder not found")
+
+// resolveRelFolder maps a RelFolder value (see Track.RelFolder) to an absolute
+// directory inside one of the scan dirs. The library root itself ("") and any
+// path that would escape a scan dir are rejected.
+func (s *Scanner) resolveRelFolder(rel string) (abs, root string, err error) {
+	if rel == "" || strings.HasPrefix(rel, "/") || strings.Contains(rel, "\\") {
+		return "", "", ErrFolderNotFound
+	}
+	for _, part := range strings.Split(rel, "/") {
+		if part == "" || part == "." || part == ".." {
+			return "", "", ErrFolderNotFound
+		}
+	}
+	multi := len(s.scanDirs) > 1
+	for _, dir := range s.scanDirs {
+		r, err := filepath.Abs(filepath.Clean(dir))
+		if err != nil {
+			continue
+		}
+		sub := rel
+		if multi {
+			prefix := filepath.Base(r) + "/"
+			if !strings.HasPrefix(rel, prefix) {
+				continue
+			}
+			sub = strings.TrimPrefix(rel, prefix)
+		}
+		candidate := filepath.Join(r, filepath.FromSlash(sub))
+		if relCheck, err := filepath.Rel(r, candidate); err != nil || relCheck == "." || strings.HasPrefix(relCheck, "..") {
+			continue
+		}
+		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+			return candidate, r, nil
+		}
+	}
+	return "", "", ErrFolderNotFound
+}
+
+// DeleteFolder deletes a library folder (given as a RelFolder value) from disk,
+// including subfolders and any non-audio files in it, and drops every track
+// inside it from the index. Empty parent folders are pruned up to the scan
+// root. It returns the tracks that were removed.
+func (s *Scanner) DeleteFolder(rel string) ([]*Track, error) {
+	abs, root, err := s.resolveRelFolder(rel)
+	if err != nil {
+		return nil, err
+	}
+	inside := func(t *Track) bool { return strings.HasPrefix(t.Path, abs+string(filepath.Separator)) }
+
+	s.mu.Lock()
+	if err := os.RemoveAll(abs); err != nil {
+		s.mu.Unlock()
+		return nil, fmt.Errorf("library: delete folder: %w", err)
+	}
+	var removed []*Track
+	kept := make([]*Track, 0, len(s.tracks))
+	for _, t := range s.tracks {
+		if inside(t) {
+			cp := *t
+			removed = append(removed, &cp)
+		} else {
+			kept = append(kept, t)
+		}
+	}
+	s.tracks = kept
+	for _, t := range removed {
+		if _, err := s.db.Exec("DELETE FROM tracks WHERE id = ?", t.ID); err != nil {
+			slog.Warn("library: delete track row", "id", t.ID, "err", err)
+		}
+		if _, err := s.db.Exec("DELETE FROM track_overrides WHERE path = ?", t.Path); err != nil {
+			slog.Warn("library: delete override row", "path", t.Path, "err", err)
+		}
+	}
+	s.mu.Unlock()
+
+	for dir := filepath.Dir(abs); dir != root && strings.HasPrefix(dir, root+string(filepath.Separator)); dir = filepath.Dir(dir) {
+		if os.Remove(dir) != nil {
+			break
+		}
+	}
+	slog.Info("library: folder deleted", "path", abs, "tracks", len(removed))
+	return removed, nil
+}
+
+// rootFor returns the absolute scan directory containing path, or "" if the
+// path is not inside any of them.
+func (s *Scanner) rootFor(path string) string {
+	for _, dir := range s.scanDirs {
+		abs, err := filepath.Abs(filepath.Clean(dir))
+		if err != nil {
+			continue
+		}
+		rel, err := filepath.Rel(abs, path)
+		if err == nil && rel != "." && !strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel) {
+			return abs
+		}
+	}
+	return ""
+}
+
 // DeleteOverride removes the stored override for the track with the given ID
 // and restores the original (file-read) metadata in memory.
 func (s *Scanner) DeleteOverride(id string) (*Track, error) {
@@ -160,6 +313,27 @@ func (s *Scanner) DeleteOverride(id string) (*Track, error) {
 
 	out := *target
 	return &out, nil
+}
+
+// setRelFoldersLocked fills RelFolder for each track from its library root.
+func (s *Scanner) setRelFoldersLocked(tracks []*Track) {
+	multi := len(s.scanDirs) > 1
+	for _, t := range tracks {
+		root := s.rootFor(t.Path)
+		if root == "" {
+			t.RelFolder = ""
+			continue
+		}
+		rel, err := filepath.Rel(root, filepath.Dir(t.Path))
+		if err != nil || rel == "." {
+			rel = ""
+		}
+		rel = filepath.ToSlash(rel)
+		if multi {
+			rel = strings.TrimSuffix(filepath.Base(root)+"/"+rel, "/")
+		}
+		t.RelFolder = rel
+	}
 }
 
 // applyOverridesLocked merges stored metadata overrides into tracks.
@@ -308,6 +482,7 @@ func (s *Scanner) Scan(ctx context.Context) error {
 	s.mu.Lock()
 	s.tracks = found
 	s.applyOverridesLocked(found)
+	s.setRelFoldersLocked(found)
 	s.mu.Unlock()
 
 	slog.Info("library: scan complete", "tracks", len(found), "cached", cachedCount, "probed", len(found)-cachedCount)
@@ -370,6 +545,7 @@ func (s *Scanner) load() error {
 	s.mu.Lock()
 	s.tracks = tracks
 	s.applyOverridesLocked(tracks)
+	s.setRelFoldersLocked(tracks)
 	s.mu.Unlock()
 	return nil
 }

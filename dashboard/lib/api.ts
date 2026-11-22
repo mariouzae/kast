@@ -46,6 +46,15 @@ export type APIStatus = {
   os_arch:     string
   cpu_percent: number   // -1 = unavailable
   mem_rss_mb:  number   // -1 = unavailable, otherwise RSS in MB
+  disk?:       APIDiskUsage | null  // filesystem holding the data dir; null = unavailable
+}
+
+export type APIDiskUsage = {
+  path:         string
+  total_bytes:  number
+  used_bytes:   number
+  free_bytes:   number   // available to the server process
+  used_percent: number
 }
 
 export type APIMount = {
@@ -103,6 +112,7 @@ export type APITrack = {
   bitrate_kbps:    number
   size_bytes:      number
   folder:          string
+  rel_folder?:     string   // folder relative to the library root, "/"-separated; "" = top level
   added_at:        string
   has_override:    boolean
   original_title?:  string
@@ -131,6 +141,9 @@ export type APINowPlaying = {
 } | null
 
 // ── File upload ───────────────────────────────────────────────────────────────
+
+/** A file to upload plus its path relative to the library folder. */
+export type APIUploadItem = { file: File; path: string }
 
 export type APIUploadResult = {
   uploaded: { name: string; error?: string }[]
@@ -524,6 +537,22 @@ export const api = {
     resetOverride: (id: string) =>
       apiFetch<APITrack>(`/api/library/${id}/override`, { method: "DELETE" }),
 
+    /** POST /api/library/delete — bulk delete of tracks and folders (rel_folder paths) */
+    deleteMany: (body: { track_ids: string[]; folders: string[] }) =>
+      apiFetch<{
+        deleted_tracks: number; deleted_folders: number; playlists_updated: number
+        failed: { item: string; error: string }[]
+      }>("/api/library/delete", { method: "POST", body: JSON.stringify(body) }),
+
+    /** DELETE /api/library/folder?path= — deletes a folder (rel_folder) with all its files */
+    deleteFolder: (relFolder: string) =>
+      apiFetch<{ deleted_tracks: number; playlists_updated: number }>(
+        `/api/library/folder?path=${encodeURIComponent(relFolder)}`, { method: "DELETE" }),
+
+    /** DELETE /api/library/{id} — deletes the audio file and removes it from all playlists */
+    delete: (id: string) =>
+      apiFetch<{ deleted: string; playlists_updated: number }>(`/api/library/${id}`, { method: "DELETE" }),
+
     /** POST /api/library/scan */
     scan: () =>
       apiFetch<{ status: string }>("/api/library/scan", { method: "POST" }),
@@ -531,12 +560,17 @@ export const api = {
     /**
      * POST /api/library/upload
      * Uploads audio files via XHR so progress can be tracked.
+     * Each item's `path` (e.g. "Album/01 Track.mp3") is recreated under the
+     * library folder; a bare file name uploads to the library root.
      * onProgress is called with 0–100 as bytes are sent.
      */
-    upload: (files: File[], onProgress?: (pct: number) => void): Promise<APIUploadResult> => {
+    upload: (items: APIUploadItem[], onProgress?: (pct: number) => void): Promise<APIUploadResult> => {
       return new Promise((resolve, reject) => {
         const fd = new FormData()
-        files.forEach((f) => fd.append("files", f))
+        items.forEach(({ file, path }) => {
+          fd.append("files", file)
+          fd.append("paths", path)
+        })
 
         const xhr = new XMLHttpRequest()
         xhr.open("POST", "/api/library/upload")

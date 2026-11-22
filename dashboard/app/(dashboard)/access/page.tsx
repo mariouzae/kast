@@ -3,6 +3,7 @@
 import * as React from "react"
 import { Plus, MoreHorizontal, Copy, Check, Trash2 } from "lucide-react"
 import { toast } from "sonner"
+import { useI18n, type TFunc } from "@/lib/i18n"
 import { api, type APIUser, type APIKey, type CreateAPIKeyResponse } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -29,22 +30,22 @@ import {
 
 type Role = "admin" | "operator" | "viewer"
 
-function relativeTime(dateStr: string | null): string {
-  if (!dateStr) return "never"
+function relativeTime(dateStr: string | null, t: TFunc): string {
+  if (!dateStr) return t("never")
   const diffMs = Date.now() - new Date(dateStr).getTime()
   const min = Math.floor(diffMs / 60_000)
-  if (min < 1) return "just now"
-  if (min < 60) return `${min}m ago`
+  if (min < 1) return t("just now")
+  if (min < 60) return t("{n}m ago", { n: min })
   const hr = Math.floor(min / 60)
-  if (hr < 24) return `${hr}h ago`
-  return `${Math.floor(hr / 24)}d ago`
+  if (hr < 24) return t("{n}h ago", { n: hr })
+  return t("{n}d ago", { n: Math.floor(hr / 24) })
 }
 
-function formatExpiry(dateStr: string | null): string {
-  if (!dateStr) return "never"
+function formatExpiry(dateStr: string | null, t: TFunc, lang: string): string {
+  if (!dateStr) return t("never")
   const d = new Date(dateStr)
-  if (d < new Date()) return "expired"
-  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+  if (d < new Date()) return t("expired")
+  return d.toLocaleDateString(lang, { year: "numeric", month: "short", day: "numeric" })
 }
 
 const ROLE_STYLES: Record<Role, string> = {
@@ -54,9 +55,10 @@ const ROLE_STYLES: Record<Role, string> = {
 }
 
 function RoleBadge({ role }: { role: Role }) {
+  const { t } = useI18n()
   return (
     <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10.5px] font-mono border ${ROLE_STYLES[role]}`}>
-      {role}
+      {t(role)}
     </span>
   )
 }
@@ -97,6 +99,7 @@ export default function AccessPage() {
   // Delete API key confirm
   const [deleteKeyTarget, setDeleteKeyTarget] = React.useState<APIKey | null>(null)
   const [deletingKey, setDeletingKey] = React.useState(false)
+  const { t, tn, tx, lang } = useI18n()
 
   async function loadUsers() {
     try {
@@ -104,7 +107,7 @@ export default function AccessPage() {
       setUsers(userList)
       setMe(currentUser)
     } catch {
-      toast.error("Failed to load users")
+      toast.error(t("Failed to load users"))
     } finally {
       setUsersLoading(false)
     }
@@ -115,7 +118,7 @@ export default function AccessPage() {
       const keys = await api.apikeys.list()
       setApiKeys(keys ?? [])
     } catch {
-      toast.error("Failed to load API keys")
+      toast.error(t("Failed to load API keys"))
     } finally {
       setKeysLoading(false)
     }
@@ -133,12 +136,12 @@ export default function AccessPage() {
     setAddSaving(true)
     try {
       await api.users.create(addForm)
-      toast.success("User created")
+      toast.success(t("User created"))
       setAddOpen(false)
       setAddForm({ username: "", password: "", role: "viewer" })
       await loadUsers()
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to create user")
+      toast.error(e instanceof Error ? t(e.message) : t("Failed to create user"))
     } finally {
       setAddSaving(false)
     }
@@ -147,25 +150,25 @@ export default function AccessPage() {
   async function handleChangeRole(user: APIUser, role: Role) {
     try {
       await api.users.update(user.id, { role })
-      toast.success(`Role changed to ${role}`)
+      toast.success(t("Role changed to {role}", { role: t(role) }))
       await loadUsers()
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to update role")
+      toast.error(e instanceof Error ? e.message : t("Failed to update role"))
     }
   }
 
   async function handleChangePassword() {
     if (!pwTarget) return
-    if (pwForm.password !== pwForm.confirm) { toast.error("Passwords do not match"); return }
-    if (pwForm.password.length < 8) { toast.error("Password must be at least 8 characters"); return }
+    if (pwForm.password !== pwForm.confirm) { toast.error(t("Passwords do not match")); return }
+    if (pwForm.password.length < 8) { toast.error(t("Password must be at least 8 characters")); return }
     setPwSaving(true)
     try {
       await api.users.update(pwTarget.id, { password: pwForm.password })
-      toast.success("Password updated")
+      toast.success(t("Password updated"))
       setPwTarget(null)
       setPwForm({ password: "", confirm: "" })
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to update password")
+      toast.error(e instanceof Error ? t(e.message) : t("Failed to update password"))
     } finally {
       setPwSaving(false)
     }
@@ -176,11 +179,11 @@ export default function AccessPage() {
     setDeleting(true)
     try {
       await api.users.delete(deleteTarget.id)
-      toast.success("User deleted")
+      toast.success(t("User deleted"))
       setDeleteTarget(null)
       await loadUsers()
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to delete user")
+      toast.error(e instanceof Error ? e.message : t("Failed to delete user"))
     } finally {
       setDeleting(false)
     }
@@ -216,7 +219,7 @@ export default function AccessPage() {
       setCreatedKey(result)
       setKeyDialogMode("reveal")
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to create API key")
+      toast.error(e instanceof Error ? e.message : t("Failed to create API key"))
     } finally {
       setKeySaving(false)
     }
@@ -234,7 +237,7 @@ export default function AccessPage() {
       await api.apikeys.update(k.id, { enabled: !k.enabled })
       await loadKeys()
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to update key")
+      toast.error(e instanceof Error ? e.message : t("Failed to update key"))
     }
   }
 
@@ -243,11 +246,11 @@ export default function AccessPage() {
     setDeletingKey(true)
     try {
       await api.apikeys.delete(deleteKeyTarget.id)
-      toast.success("API key revoked")
+      toast.success(t("API key revoked"))
       setDeleteKeyTarget(null)
       await loadKeys()
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to delete API key")
+      toast.error(e instanceof Error ? e.message : t("Failed to delete API key"))
     } finally {
       setDeletingKey(false)
     }
@@ -258,26 +261,26 @@ export default function AccessPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-[24px] font-bold tracking-tight text-ink-100">Access & Auth</h1>
-        <p className="text-[12.5px] text-ink-400 mt-1">Manage users and API credentials</p>
+        <h1 className="text-[24px] font-bold tracking-tight text-ink-100">{t("Access & Auth")}</h1>
+        <p className="text-[12.5px] text-ink-400 mt-1">{t("Manage users and API credentials")}</p>
       </div>
 
       {/* ── Users table ─────────────────────────────────────────────────────── */}
       <div className="rounded-lg border border-ink-800 bg-ink-900">
         <div className="flex items-center justify-between px-4 py-3 border-b border-ink-800">
-          <h2 className="text-[13px] font-semibold text-ink-100">Users</h2>
+          <h2 className="text-[13px] font-semibold text-ink-100">{t("Users")}</h2>
           <button onClick={() => setAddOpen(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-[12.5px] font-medium bg-k-500 text-white hover:bg-k-600 transition-colors">
             <Plus className="h-3.5 w-3.5" />
-            Add User
+            {t("Add User")}
           </button>
         </div>
 
         <div className="divide-y divide-ink-800">
           <div className="grid grid-cols-[1fr_120px_110px_36px] gap-3 px-4 py-2">
-            <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">Username</span>
-            <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">Role</span>
-            <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">Added</span>
+            <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">{t("Username")}</span>
+            <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">{t("Role")}</span>
+            <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">{t("Added")}</span>
             <span />
           </div>
 
@@ -291,7 +294,7 @@ export default function AccessPage() {
               </div>
             ))
           ) : users.length === 0 ? (
-            <div className="px-4 py-10 text-center text-[12.5px] text-ink-500">No users found</div>
+            <div className="px-4 py-10 text-center text-[12.5px] text-ink-500">{t("No users found")}</div>
           ) : (
             users.map(user => (
               <div key={user.id} className="grid grid-cols-[1fr_120px_110px_36px] gap-3 px-4 py-3 items-center">
@@ -299,12 +302,12 @@ export default function AccessPage() {
                   <span className="text-[13px] text-ink-100 font-medium">{user.username}</span>
                   {isSelf(user) && (
                     <span className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-k-500/15 text-k-400 border border-k-500/25">
-                      you
+                      {t("you")}
                     </span>
                   )}
                 </div>
                 <RoleBadge role={user.role} />
-                <span className="text-[12px] text-ink-500">{relativeTime(user.created_at)}</span>
+                <span className="text-[12px] text-ink-500">{relativeTime(user.created_at, t)}</span>
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -314,16 +317,16 @@ export default function AccessPage() {
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-44">
                     <DropdownMenuSub>
-                      <DropdownMenuSubTrigger className="text-xs">Change Role</DropdownMenuSubTrigger>
+                      <DropdownMenuSubTrigger className="text-xs">{t("Change Role")}</DropdownMenuSubTrigger>
                       <DropdownMenuSubContent>
                         {(["admin", "operator", "viewer"] as Role[]).map(role => (
                           <DropdownMenuItem
                             key={role}
-                            className="text-xs capitalize"
+                            className="text-xs"
                             disabled={user.role === role}
                             onClick={() => handleChangeRole(user, role)}
                           >
-                            {role}
+                            {t(role === "admin" ? "Admin" : role === "operator" ? "Operator" : "Viewer")}
                           </DropdownMenuItem>
                         ))}
                       </DropdownMenuSubContent>
@@ -332,7 +335,7 @@ export default function AccessPage() {
                       className="text-xs"
                       onClick={() => { setPwTarget(user); setPwForm({ password: "", confirm: "" }) }}
                     >
-                      Change Password
+                      {t("Change Password")}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
@@ -340,7 +343,7 @@ export default function AccessPage() {
                       disabled={isSelf(user)}
                       onClick={() => setDeleteTarget(user)}
                     >
-                      Delete
+                      {t("Delete")}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -353,21 +356,21 @@ export default function AccessPage() {
       {/* ── API Keys table ───────────────────────────────────────────────────── */}
       <div className="rounded-lg border border-ink-800 bg-ink-900">
         <div className="flex items-center justify-between px-4 py-3 border-b border-ink-800">
-          <h2 className="text-[13px] font-semibold text-ink-100">API Keys</h2>
+          <h2 className="text-[13px] font-semibold text-ink-100">{t("API Keys")}</h2>
           <Button size="sm" variant="outline" className="h-7 gap-1.5 text-xs" onClick={openKeyDialog}>
             <Plus className="h-3.5 w-3.5" />
-            Create Key
+            {t("Create Key")}
           </Button>
         </div>
 
         <div className="divide-y divide-ink-800">
           <div className="grid grid-cols-[1fr_90px_100px_90px_90px_44px_36px] gap-3 px-4 py-2">
-            <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">Name</span>
-            <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">Prefix</span>
-            <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">IP Allowlist</span>
-            <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">Last used</span>
-            <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">Expires</span>
-            <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">On</span>
+            <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">{t("Name")}</span>
+            <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">{t("Prefix")}</span>
+            <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">{t("IP Allowlist")}</span>
+            <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">{t("Last used")}</span>
+            <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">{t("Expires")}</span>
+            <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">{t("On")}</span>
             <span />
           </div>
 
@@ -385,7 +388,7 @@ export default function AccessPage() {
             ))
           ) : apiKeys.length === 0 ? (
             <div className="px-4 py-10 text-center text-[12.5px] text-ink-500">
-              No API keys — create one to enable programmatic access
+              {t("No API keys — create one to enable programmatic access")}
             </div>
           ) : (
             apiKeys.map(k => (
@@ -394,13 +397,13 @@ export default function AccessPage() {
                 <code className="text-[11px] text-ink-400 font-mono">{k.prefix}…</code>
                 <span className="text-[12px] text-ink-500">
                   {k.ip_allowlist.length === 0
-                    ? <span className="text-ink-600">any</span>
-                    : <span title={k.ip_allowlist.join("\n")}>{k.ip_allowlist.length} IP{k.ip_allowlist.length !== 1 ? "s" : ""}</span>
+                    ? <span className="text-ink-600">{t("any")}</span>
+                    : <span title={k.ip_allowlist.join("\n")}>{tn(k.ip_allowlist.length, "{n} IP", "{n} IPs")}</span>
                   }
                 </span>
-                <span className="text-[12px] text-ink-500">{relativeTime(k.last_used_at)}</span>
+                <span className="text-[12px] text-ink-500">{relativeTime(k.last_used_at, t)}</span>
                 <span className={`text-[12px] ${k.expires_at && new Date(k.expires_at) < new Date() ? "text-red-400" : "text-ink-500"}`}>
-                  {formatExpiry(k.expires_at)}
+                  {formatExpiry(k.expires_at, t, lang)}
                 </span>
                 <Switch
                   checked={k.enabled}
@@ -424,10 +427,10 @@ export default function AccessPage() {
       {/* ── Add User Dialog ──────────────────────────────────────────────────── */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="sm:max-w-sm">
-          <DialogHeader><DialogTitle>Add User</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t("Add User")}</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
-              <Label className="text-xs">Username</Label>
+              <Label className="text-xs">{t("Username")}</Label>
               <Input
                 value={addForm.username}
                 onChange={e => setAddForm(f => ({ ...f, username: e.target.value }))}
@@ -437,32 +440,32 @@ export default function AccessPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Password</Label>
+              <Label className="text-xs">{t("Password")}</Label>
               <Input
                 type="password"
                 value={addForm.password}
                 onChange={e => setAddForm(f => ({ ...f, password: e.target.value }))}
-                placeholder="Min. 8 characters"
+                placeholder={t("Min. 8 characters")}
                 autoComplete="new-password"
                 className="h-8 text-sm"
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Role</Label>
+              <Label className="text-xs">{t("Role")}</Label>
               <Select value={addForm.role} onValueChange={v => setAddForm(f => ({ ...f, role: v as Role }))}>
                 <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="operator">Operator</SelectItem>
-                  <SelectItem value="viewer">Viewer</SelectItem>
+                  <SelectItem value="admin">{t("Admin")}</SelectItem>
+                  <SelectItem value="operator">{t("Operator")}</SelectItem>
+                  <SelectItem value="viewer">{t("Viewer")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" size="sm" onClick={() => setAddOpen(false)} disabled={addSaving}>Cancel</Button>
+            <Button variant="ghost" size="sm" onClick={() => setAddOpen(false)} disabled={addSaving}>{t("Cancel")}</Button>
             <Button size="sm" onClick={handleAddUser} disabled={addSaving || !addForm.username || !addForm.password}>
-              {addSaving ? "Creating…" : "Create User"}
+              {addSaving ? t("Creating…") : t("Create User")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -471,35 +474,35 @@ export default function AccessPage() {
       {/* ── Change Password Dialog ───────────────────────────────────────────── */}
       <Dialog open={!!pwTarget} onOpenChange={open => { if (!open) setPwTarget(null) }}>
         <DialogContent className="sm:max-w-sm">
-          <DialogHeader><DialogTitle>Change Password — {pwTarget?.username}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t("Change Password — {name}", { name: pwTarget?.username ?? "" })}</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
-              <Label className="text-xs">New Password</Label>
+              <Label className="text-xs">{t("New Password")}</Label>
               <Input
                 type="password"
                 value={pwForm.password}
                 onChange={e => setPwForm(f => ({ ...f, password: e.target.value }))}
-                placeholder="Min. 8 characters"
+                placeholder={t("Min. 8 characters")}
                 autoComplete="new-password"
                 className="h-8 text-sm"
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Confirm Password</Label>
+              <Label className="text-xs">{t("Confirm Password")}</Label>
               <Input
                 type="password"
                 value={pwForm.confirm}
                 onChange={e => setPwForm(f => ({ ...f, confirm: e.target.value }))}
-                placeholder="Repeat password"
+                placeholder={t("Repeat password")}
                 autoComplete="new-password"
                 className="h-8 text-sm"
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" size="sm" onClick={() => setPwTarget(null)} disabled={pwSaving}>Cancel</Button>
+            <Button variant="ghost" size="sm" onClick={() => setPwTarget(null)} disabled={pwSaving}>{t("Cancel")}</Button>
             <Button size="sm" onClick={handleChangePassword} disabled={pwSaving || !pwForm.password || !pwForm.confirm}>
-              {pwSaving ? "Saving…" : "Update Password"}
+              {pwSaving ? t("Saving…") : t("Update Password")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -509,17 +512,17 @@ export default function AccessPage() {
       <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete &ldquo;{deleteTarget?.username}&rdquo;?</AlertDialogTitle>
-            <AlertDialogDescription>This action cannot be undone. The user will immediately lose access.</AlertDialogDescription>
+            <AlertDialogTitle>{t("Delete \"{name}\"?", { name: deleteTarget?.username ?? "" })}</AlertDialogTitle>
+            <AlertDialogDescription>{t("This action cannot be undone. The user will immediately lose access.")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>{t("Cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-red-600 hover:bg-red-700 text-white"
               disabled={deleting}
               onClick={handleDeleteUser}
             >
-              {deleting ? "Deleting…" : "Delete"}
+              {deleting ? t("Deleting…") : t("Delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -530,20 +533,20 @@ export default function AccessPage() {
         <DialogContent className="sm:max-w-sm">
           {keyDialogMode === "form" ? (
             <>
-              <DialogHeader><DialogTitle>Create API Key</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{t("Create API Key")}</DialogTitle></DialogHeader>
               <div className="space-y-4 py-2">
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Name</Label>
+                  <Label className="text-xs">{t("Name")}</Label>
                   <Input
                     value={keyForm.name}
                     onChange={e => setKeyForm(f => ({ ...f, name: e.target.value }))}
-                    placeholder="e.g. CI pipeline"
+                    placeholder={t("e.g. CI pipeline")}
                     autoComplete="off"
                     className="h-8 text-sm"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Expires <span className="text-ink-500 font-normal">(optional)</span></Label>
+                  <Label className="text-xs">{t("Expires")} <span className="text-ink-500 font-normal">{t("(optional)")}</span></Label>
                   <Input
                     type="date"
                     value={keyForm.expiresAt}
@@ -552,7 +555,7 @@ export default function AccessPage() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs">IP Allowlist <span className="text-ink-500 font-normal">(optional — one IP or CIDR per line)</span></Label>
+                  <Label className="text-xs">{t("IP Allowlist")} <span className="text-ink-500 font-normal">{t("(optional — one IP or CIDR per line)")}</span></Label>
                   <Textarea
                     value={keyForm.ipAllowlist}
                     onChange={e => setKeyForm(f => ({ ...f, ipAllowlist: e.target.value }))}
@@ -563,18 +566,18 @@ export default function AccessPage() {
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="ghost" size="sm" onClick={closeKeyDialog} disabled={keySaving}>Cancel</Button>
+                <Button variant="ghost" size="sm" onClick={closeKeyDialog} disabled={keySaving}>{t("Cancel")}</Button>
                 <Button size="sm" onClick={handleCreateKey} disabled={keySaving || !keyForm.name.trim()}>
-                  {keySaving ? "Creating…" : "Create Key"}
+                  {keySaving ? t("Creating…") : t("Create Key")}
                 </Button>
               </DialogFooter>
             </>
           ) : (
             <>
-              <DialogHeader><DialogTitle>API Key Created</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{t("API Key Created")}</DialogTitle></DialogHeader>
               <div className="space-y-4 py-2">
                 <p className="text-[12px] text-ink-400 leading-relaxed">
-                  Copy your key now — it will <strong className="text-ink-200">not be shown again</strong>.
+                  {tx("Copy your key now — it will {never} again.", { never: <strong className="text-ink-200">{t("not be shown")}</strong> })}
                 </p>
                 <div className="flex gap-2">
                   <Input
@@ -589,12 +592,12 @@ export default function AccessPage() {
                 </div>
                 {createdKey && createdKey.ip_allowlist.length > 0 && (
                   <p className="text-[11.5px] text-ink-500">
-                    Restricted to: {createdKey.ip_allowlist.join(", ")}
+                    {t("Restricted to: {ips}", { ips: createdKey.ip_allowlist.join(", ") })}
                   </p>
                 )}
               </div>
               <DialogFooter>
-                <Button size="sm" onClick={closeKeyDialog}>Done</Button>
+                <Button size="sm" onClick={closeKeyDialog}>{t("Done")}</Button>
               </DialogFooter>
             </>
           )}
@@ -605,19 +608,19 @@ export default function AccessPage() {
       <AlertDialog open={!!deleteKeyTarget} onOpenChange={open => { if (!open) setDeleteKeyTarget(null) }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Revoke &ldquo;{deleteKeyTarget?.name}&rdquo;?</AlertDialogTitle>
+            <AlertDialogTitle>{t("Revoke \"{name}\"?", { name: deleteKeyTarget?.name ?? "" })}</AlertDialogTitle>
             <AlertDialogDescription>
-              This key will stop working immediately. Any clients using it will lose access.
+              {t("This key will stop working immediately. Any clients using it will lose access.")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deletingKey}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={deletingKey}>{t("Cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-red-600 hover:bg-red-700 text-white"
               disabled={deletingKey}
               onClick={handleDeleteKey}
             >
-              {deletingKey ? "Revoking…" : "Revoke Key"}
+              {deletingKey ? t("Revoking…") : t("Revoke Key")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

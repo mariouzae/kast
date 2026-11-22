@@ -60,62 +60,110 @@
     --radius-4xl: 0px;
 }
 
-/* Kast ink/k colour palette — separate block so Tailwind generates utility classes */
-@theme {
-    --color-k-300: #ffa666;
-    --color-k-400: #ff8a3d;
-    --color-k-500: #fb7314;
-    --color-k-600: #dc5a06;
-    --color-ink-100: #eeeef1;
-    --color-ink-200: #d4d4dc;
-    --color-ink-300: #a6a6b0;
-    --color-ink-400: #71717a;
-    --color-ink-500: #52525b;
-    --color-ink-600: #3f3f46;
-    --color-ink-700: #2b2b30;
-    --color-ink-800: #1e1e22;
-    --color-ink-850: #161618;
-    --color-ink-900: #101012;
-    --color-ink-950: #08080a;
+/* Kast ink/k colour palette — utilities resolve to theme variables so the
+   whole scale flips between light (:root) and dark (.dark). In light mode the
+   ink scale is inverted: ink-100 is still "strongest text", ink-950 is still
+   "page background". */
+@theme inline {
+    --color-k-300: var(--k-300);
+    --color-k-400: var(--k-400);
+    --color-k-500: var(--k-500);
+    --color-k-600: var(--k-600);
+    --color-ink-100: var(--ink-100);
+    --color-ink-200: var(--ink-200);
+    --color-ink-300: var(--ink-300);
+    --color-ink-400: var(--ink-400);
+    --color-ink-500: var(--ink-500);
+    --color-ink-600: var(--ink-600);
+    --color-ink-700: var(--ink-700);
+    --color-ink-800: var(--ink-800);
+    --color-ink-850: var(--ink-850);
+    --color-ink-900: var(--ink-900);
+    --color-ink-950: var(--ink-950);
 }
 
-/* ── Dark-only design system (ink / k-orange palette) ── */
+/* ── Light theme (default variables) ── */
 :root {
-    --background: #08080a;
-    --foreground: #eeeef1;
-    --card: #101012;
-    --card-foreground: #eeeef1;
-    --popover: #161618;
-    --popover-foreground: #eeeef1;
+    --ink-100: #18181b;
+    --ink-200: #27272a;
+    --ink-300: #3f3f46;
+    --ink-400: #52525b;
+    --ink-500: #71717a;
+    --ink-600: #a1a1aa;
+    --ink-700: #d4d4d8;
+    --ink-800: #e4e4e7;
+    --ink-850: #f4f4f5;
+    --ink-900: #ffffff;
+    --ink-950: #f6f6f7;
+    --k-300: #c94f06;
+    --k-400: #e2600a;
+    --k-500: #fb7314;
+    --k-600: #c2410c;
+
+    --background: #f6f6f7;
+    --foreground: #18181b;
+    --card: #ffffff;
+    --card-foreground: #18181b;
+    --popover: #ffffff;
+    --popover-foreground: #18181b;
     --primary: #fb7314;
     --primary-foreground: #ffffff;
-    --secondary: #1e1e22;
-    --secondary-foreground: #a6a6b0;
-    --muted: #1e1e22;
-    --muted-foreground: #52525b;
-    --accent: #2b2b30;
-    --accent-foreground: #eeeef1;
-    --destructive: #ef4444;
-    --border: #1e1e22;
-    --input: #1e1e22;
+    --secondary: #f4f4f5;
+    --secondary-foreground: #3f3f46;
+    --muted: #f4f4f5;
+    --muted-foreground: #71717a;
+    --accent: #e4e4e7;
+    --accent-foreground: #18181b;
+    --destructive: #dc2626;
+    --border: #e4e4e7;
+    --input: #e4e4e7;
     --ring: rgba(251, 115, 20, 0.35);
     --chart-1: #fb7314;
     --chart-2: #ff8a3d;
     --chart-3: #ffa666;
     --chart-4: #dc5a06;
-    --chart-5: #2b2b30;
+    --chart-5: #d4d4d8;
     --radius: 0px;
-    --sidebar: #101012;
-    --sidebar-foreground: #eeeef1;
+    --sidebar: #ffffff;
+    --sidebar-foreground: #18181b;
     --sidebar-primary: #fb7314;
     --sidebar-primary-foreground: #ffffff;
-    --sidebar-accent: #1e1e22;
-    --sidebar-accent-foreground: #eeeef1;
-    --sidebar-border: #1e1e22;
+    --sidebar-accent: #f4f4f5;
+    --sidebar-accent-foreground: #18181b;
+    --sidebar-border: #e4e4e7;
     --sidebar-ring: rgba(251, 115, 20, 0.35);
+    color-scheme: light;
 }
 
+/* Status colours: the -400 shades are tuned for dark backgrounds and are
+   too pale on white, so light mode maps them to the -600 shades. */
+:root:not(.dark) {
+    --color-red-400: oklch(57.7% 0.245 27.325);
+    --color-emerald-400: oklch(59.6% 0.145 163.225);
+    --color-amber-400: oklch(66.6% 0.179 58.318);
+    --color-violet-400: oklch(54.1% 0.281 293.009);
+    --color-green-400: oklch(62.7% 0.194 149.214);
+}
+
+/* ── Dark theme ── */
 .dark {
+    --ink-100: #eeeef1;
+    --ink-200: #d4d4dc;
+    --ink-300: #a6a6b0;
+    --ink-400: #71717a;
+    --ink-500: #52525b;
+    --ink-600: #3f3f46;
+    --ink-700: #2b2b30;
+    --ink-800: #1e1e22;
+    --ink-850: #161618;
+    --ink-900: #101012;
+    --ink-950: #08080a;
+    --k-300: #ffa666;
+    --k-400: #ff8a3d;
+    --k-500: #fb7314;
+    --k-600: #dc5a06;
+    color-scheme: dark;
+
     --background: #08080a;
     --foreground: #eeeef1;
     --card: #101012;
@@ -174,7 +222,7 @@
 
 /* Row hover */
 .kast-row { transition: background-color 120ms ease; }
-.kast-row:hover { background: rgba(255, 255, 255, 0.025); }
+.kast-row:hover { background: color-mix(in srgb, var(--ink-100) 3%, transparent); }
 .kast-row .row-actions { opacity: 0; transition: opacity 120ms; }
 .kast-row:hover .row-actions { opacity: 1; }
 
@@ -195,14 +243,14 @@
   input:-webkit-autofill:hover,
   input:-webkit-autofill:focus,
   input:-webkit-autofill:active {
-    -webkit-box-shadow: 0 0 0 1000px #101012 inset !important;
-    -webkit-text-fill-color: #eeeef1 !important;
-    caret-color: #eeeef1;
+    -webkit-box-shadow: 0 0 0 1000px var(--ink-900) inset !important;
+    -webkit-text-fill-color: var(--ink-100) !important;
+    caret-color: var(--ink-100);
     transition: background-color 9999s ease-in-out 0s, color 9999s ease-in-out 0s;
   }
 
   ::selection {
     background: rgba(251, 115, 20, 0.3);
-    color: #ff8a3d;
+    color: var(--k-400);
   }
 }

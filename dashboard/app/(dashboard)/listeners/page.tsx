@@ -5,6 +5,7 @@ import { RefreshCw } from "lucide-react"
 import { api, type APIListener, type APIMount, APIError } from "@/lib/api"
 import { cn, formatInTZ } from "@/lib/utils"
 import { SettingsContext } from "@/app/(dashboard)/layout"
+import { useI18n, type TFunc } from "@/lib/i18n"
 
 const POLL_INTERVAL = 5_000
 
@@ -26,19 +27,19 @@ function countryFlag(code: string): string {
   return [...code.toUpperCase()].map(c => String.fromCodePoint(0x1F1E6 + c.charCodeAt(0) - 65)).join("")
 }
 
-function countryName(code: string): string {
+function countryName(code: string, lang: string): string {
   try {
-    return new Intl.DisplayNames(["en"], { type: "region" }).of(code) ?? code
+    return new Intl.DisplayNames([lang], { type: "region" }).of(code) ?? code
   } catch {
     return code
   }
 }
 
-function timeAgo(iso: string): string {
+function timeAgo(iso: string, t: TFunc): string {
   const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
-  if (diff < 5)  return "just now"
-  if (diff < 60) return `${diff}s ago`
-  return `${Math.floor(diff / 60)}m ago`
+  if (diff < 5)  return t("just now")
+  if (diff < 60) return t("{n}s ago", { n: diff })
+  return t("{n}m ago", { n: Math.floor(diff / 60) })
 }
 
 function fmtListeningDuration(iso: string): string {
@@ -72,17 +73,18 @@ function parseUA(ua: string): string {
 // ── Row ──
 
 function ListenerRow({ entry, mountNames }: { entry: APIListener; mountNames: Map<string, string> }) {
+  const { t, lang } = useI18n()
   const mountLabel = mountNames.get(entry.mount) ?? entry.mount
   const since      = entry.connected_at
     ? fmtListeningDuration(entry.connected_at)
-    : timeAgo(entry.last_seen)
+    : timeAgo(entry.last_seen, t)
 
   const location = isPrivate(entry.ip)
-    ? <span className="text-ink-500">Local</span>
+    ? <span className="text-ink-500">{t("Local")}</span>
     : entry.country_code
       ? <span className="flex items-center gap-1.5">
           <span>{countryFlag(entry.country_code)}</span>
-          <span className="text-ink-300">{countryName(entry.country_code)}</span>
+          <span className="text-ink-300">{countryName(entry.country_code, lang)}</span>
         </span>
       : <span className="text-ink-600">—</span>
 
@@ -106,6 +108,7 @@ function ListenerRow({ entry, mountNames }: { entry: APIListener; mountNames: Ma
 
 export default function ListenersPage() {
   const { timezone } = React.useContext(SettingsContext)
+  const { t, tn } = useI18n()
   const [listeners, setListeners] = React.useState<APIListener[] | null>(null)
   const [mounts,    setMounts]    = React.useState<APIMount[]>([])
   const [error,     setError]     = React.useState<string | null>(null)
@@ -140,7 +143,7 @@ export default function ListenersPage() {
       setLastRefresh(new Date())
       setError(null)
     } catch (e) {
-      setError(e instanceof APIError ? e.message : "Failed to load")
+      setError(e instanceof APIError ? e.message : t("Failed to load"))
     } finally {
       setRefreshing(false)
     }
@@ -160,11 +163,11 @@ export default function ListenersPage() {
     <div>
       <div className="flex items-start justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-[24px] font-bold tracking-tight text-ink-100">Listeners</h1>
+          <h1 className="text-[24px] font-bold tracking-tight text-ink-100">{t("Listeners")}</h1>
           <p className="mt-1 text-[12.5px] text-ink-400">
             {listeners !== null
-              ? `${total} active · updates every ${POLL_INTERVAL / 1000}s`
-              : "Active stream consumers"}
+              ? t("{n} active · updates every {s}s", { n: total, s: POLL_INTERVAL / 1000 })
+              : t("Active stream consumers")}
           </p>
         </div>
         <button
@@ -187,20 +190,20 @@ export default function ListenersPage() {
       {/* Stat strip */}
       <div className="grid grid-cols-3 gap-px bg-ink-800 border border-ink-800 rounded-lg overflow-hidden mb-9">
         <div className="bg-ink-950 px-5 py-4">
-          <div className="text-[11px] text-ink-500 font-mono uppercase tracking-wider">Total listeners</div>
+          <div className="text-[11px] text-ink-500 font-mono uppercase tracking-wider">{t("Total listeners")}</div>
           <div className="mt-1.5 flex items-baseline gap-2">
             <span className="text-[22px] font-bold text-ink-100">{listeners !== null ? total : "—"}</span>
-            {total > 0 && <span className="text-[11px] text-emerald-400 font-mono">live</span>}
+            {total > 0 && <span className="text-[11px] text-emerald-400 font-mono">{t("live")}</span>}
           </div>
         </div>
         <div className="bg-ink-950 px-5 py-4">
-          <div className="text-[11px] text-ink-500 font-mono uppercase tracking-wider">Live mounts</div>
+          <div className="text-[11px] text-ink-500 font-mono uppercase tracking-wider">{t("Live mounts")}</div>
           <div className="mt-1.5">
             <span className="text-[22px] font-bold text-emerald-400">{listeners !== null ? liveMounts : "—"}</span>
           </div>
         </div>
         <div className="bg-ink-950 px-5 py-4">
-          <div className="text-[11px] text-ink-500 font-mono uppercase tracking-wider">Idle mounts</div>
+          <div className="text-[11px] text-ink-500 font-mono uppercase tracking-wider">{t("Idle mounts")}</div>
           <div className="mt-1.5">
             <span className="text-[22px] font-bold text-ink-500">{listeners !== null ? idleMounts : "—"}</span>
           </div>
@@ -211,8 +214,8 @@ export default function ListenersPage() {
       <div className="flex items-center justify-between gap-4 mb-3">
         <h2 className="text-[11px] font-medium text-ink-500 uppercase tracking-wider font-mono">
           {mountFilter
-            ? `${filtered.length} listener${filtered.length !== 1 ? "s" : ""} on ${mountNames.get(mountFilter) ?? mountFilter}`
-            : "Active listeners"}
+            ? tn(filtered.length, "{n} listener on {mount}", "{n} listeners on {mount}", { mount: mountNames.get(mountFilter) ?? mountFilter })
+            : t("Active listeners")}
         </h2>
         {activeMounts.length > 1 && (
           <div className="flex items-center gap-1.5">
@@ -225,7 +228,7 @@ export default function ListenersPage() {
                   : "text-ink-500 hover:text-ink-300 border border-transparent"
               )}
             >
-              All
+              {t("All")}
             </button>
             {activeMounts.map(([mount, count]) => (
               <button
@@ -252,17 +255,17 @@ export default function ListenersPage() {
         </div>
       ) : listeners.length === 0 ? (
         <div className="border-t border-ink-800 py-10 flex flex-col items-center gap-1 text-ink-600">
-          <p className="text-[12.5px]">No active listeners</p>
-          <p className="text-[11.5px]">Listeners appear when someone is actively streaming</p>
+          <p className="text-[12.5px]">{t("No active listeners")}</p>
+          <p className="text-[11.5px]">{t("Listeners appear when someone is actively streaming")}</p>
         </div>
       ) : (
         <div className="border-t border-ink-800">
           <div className="grid grid-cols-[minmax(0,1.1fr)_minmax(0,1.2fr)_90px_minmax(0,1fr)_72px] gap-3 px-1 py-2 text-[10.5px] uppercase tracking-wider text-ink-500 font-mono border-b border-ink-800">
             <div>IP</div>
-            <div>Location</div>
-            <div>Client</div>
-            <div>Mount</div>
-            <div className="text-right">Since</div>
+            <div>{t("Location")}</div>
+            <div>{t("Client")}</div>
+            <div>{t("Mount")}</div>
+            <div className="text-right">{t("Since")}</div>
           </div>
           {filtered.map((l, i) => (
             <ListenerRow key={`${l.ip}-${l.mount}-${i}`} entry={l} mountNames={mountNames} />
