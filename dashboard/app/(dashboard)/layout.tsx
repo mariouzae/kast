@@ -108,7 +108,9 @@ function SettingsProvider({ children }: { children: React.ReactNode }) {
       .then((s) => {
         const publicUrl = s.public_url ?? ""
         setSettings({ timezone: s.timezone ?? "UTC", publicUrl })
-        if (publicUrl) localStorage.setItem("kast_api_url", publicUrl)
+        // Clear the stale override older builds wrote; the listen page uses
+        // same-origin URLs through the dashboard proxy now.
+        try { localStorage.removeItem("kast_api_url") } catch {}
       })
       .catch(() => {})
   }, [])

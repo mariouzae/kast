@@ -479,6 +479,8 @@ func (s *Scanner) Scan(ctx context.Context) error {
 		slog.Error("library: persist after scan", "err", err)
 	}
 
+	sortTracks(found)
+
 	s.mu.Lock()
 	s.tracks = found
 	s.applyOverridesLocked(found)
@@ -542,12 +544,76 @@ func (s *Scanner) load() error {
 	if err := rows.Err(); err != nil {
 		return err
 	}
+	sortTracks(tracks)
+
 	s.mu.Lock()
 	s.tracks = tracks
 	s.applyOverridesLocked(tracks)
 	s.setRelFoldersLocked(tracks)
 	s.mu.Unlock()
 	return nil
+}
+
+// sortTracks orders tracks by folder, then by file name, using natural
+// ordering, so the library lists files folder by folder and by name ("2 x.mp3" before "10 x.mp3")
+// instead of in the nondeterministic order parallel probing finishes in.
+func sortTracks(tracks []*Track) {
+	slices.SortStableFunc(tracks, func(a, b *Track) int {
+		if c := naturalCompare(filepath.Dir(a.Path), filepath.Dir(b.Path)); c != 0 {
+			return c
+		}
+		return naturalCompare(filepath.Base(a.Path), filepath.Base(b.Path))
+	})
+}
+
+// naturalCompare compares strings case-insensitively, treating runs of ASCII
+// digits as numbers. Ties fall back to a plain byte comparison so the order is
+// total and deterministic.
+func naturalCompare(a, b string) int {
+	la, lb := strings.ToLower(a), strings.ToLower(b)
+	i, j := 0, 0
+	for i < len(la) && j < len(lb) {
+		ca, cb := la[i], lb[j]
+		if isDigit(ca) && isDigit(cb) {
+			si, sj := i, j
+			for i < len(la) && isDigit(la[i]) {
+				i++
+			}
+			for j < len(lb) && isDigit(lb[j]) {
+				j++
+			}
+			na := strings.TrimLeft(la[si:i], "0")
+			nb := strings.TrimLeft(lb[sj:j], "0")
+			if len(na) != len(nb) {
+				return cmpInt(len(na), len(nb))
+			}
+			if c := strings.Compare(na, nb); c != 0 {
+				return c
+			}
+			continue
+		}
+		if ca != cb {
+			return cmpInt(int(ca), int(cb))
+		}
+		i++
+		j++
+	}
+	if c := cmpInt(len(la)-i, len(lb)-j); c != 0 {
+		return c
+	}
+	return strings.Compare(a, b)
+}
+
+func isDigit(c byte) bool { return c >= '0' && c <= '9' }
+
+func cmpInt(a, b int) int {
+	switch {
+	case a < b:
+		return -1
+	case a > b:
+		return 1
+	}
+	return 0
 }
 
 // ── ffprobe ───────────────────────────────────────────────────────────────────

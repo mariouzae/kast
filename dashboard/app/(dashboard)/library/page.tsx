@@ -229,7 +229,9 @@ function FileUploadModal({
     if (skipped > 0) toast.info(tn(skipped, "Skipped {n} non-audio file", "Skipped {n} non-audio files"))
     setItems((prev) => {
       const seen = new Set(prev.map((it) => it.path + ":" + it.file.size))
+      // Keep the queue (and therefore the upload order) sorted by folder/name.
       return [...prev, ...filtered.filter((it) => !seen.has(it.path + ":" + it.file.size))]
+        .sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true, sensitivity: "base" }))
     })
     setResults(null)
   }

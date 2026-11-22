@@ -329,7 +329,10 @@ function AddTracksDialog({ open, onOpenChange, library, existingPaths, onAdd }: 
     })
 
   const handleAdd = () => {
-    const paths = Array.from(selected)
+    // Add in library order (folder, then file name — sorted by the server),
+    // not in the order the boxes were clicked, so sequential playback follows
+    // the file-system order.
+    const paths = library.filter((t) => selected.has(t.path)).map((t) => t.path)
     onAdd(paths); setSelected(new Set()); setSearch(""); onOpenChange(false)
     toast.success(tn(paths.length, "{n} track added", "{n} tracks added"))
   }

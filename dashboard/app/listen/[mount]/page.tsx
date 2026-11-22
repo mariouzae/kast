@@ -89,8 +89,10 @@ function cx(...a: (string | false | null | undefined)[]) {
 
 function getServerBase() {
   if (typeof window === "undefined") return ""
-  const stored = localStorage.getItem("kast_api_url")
-  if (stored) return stored.replace(/\/$/, "")
+  // Deliberately NOT using the admin "public_url" setting here: it is the
+  // externally advertised stream address and may not be reachable from the
+  // listener's browser (e.g. a LAN IP while the server binds to 127.0.0.1).
+  // This page is served by the dashboard, which proxies /public and /hls.
   if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "")
   return "" // relative URLs → proxied through Next.js
 }

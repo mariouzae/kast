@@ -52,11 +52,8 @@ function cx(...a: (string | false | null | undefined)[]) {
 
 function getServerBase() {
   if (typeof window === "undefined") return ""
-  return (
-    localStorage.getItem("kast_api_url") ??
-    process.env.NEXT_PUBLIC_API_URL ??
-    "http://localhost:8080"
-  ).replace(/\/$/, "")
+  // Same-origin by default: the dashboard proxies /public and /whep.
+  return (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "")
 }
 
 // ── SVG icons ──────────────────────────────────────────────────────────────
@@ -280,7 +277,7 @@ export default function ListenRTCPage({ params }: { params: Promise<{ mount: str
   const pcRef    = React.useRef<RTCPeerConnection | null>(null)
 
   const [station, setStation]       = React.useState<StationInfo | null>(null)
-  const [serverBase, setServerBase] = React.useState("")
+  const [serverBase, setServerBase] = React.useState<string | null>(null)
   const [playing, setPlaying]       = React.useState(false)
   const [rtcStatus, setRtcStatus]   = React.useState<RTCStatus>("idle")
   const [volume, setVolume]         = React.useState(75)
@@ -291,7 +288,7 @@ export default function ListenRTCPage({ params }: { params: Promise<{ mount: str
 
   // Poll station info
   React.useEffect(() => {
-    if (!serverBase) return
+    if (serverBase === null) return
     const load = () =>
       fetch(`${serverBase}/public/${mount}`)
         .then((r) => (r.ok ? r.json() : Promise.reject()))
@@ -304,7 +301,7 @@ export default function ListenRTCPage({ params }: { params: Promise<{ mount: str
 
   // Poll history
   React.useEffect(() => {
-    if (!serverBase) return
+    if (serverBase === null) return
     const load = () =>
       fetch(`${serverBase}/public/${mount}/history`)
         .then((r) => (r.ok ? r.json() : Promise.reject()))
@@ -355,7 +352,7 @@ export default function ListenRTCPage({ params }: { params: Promise<{ mount: str
   }, [])
 
   const startWebRTC = React.useCallback(async () => {
-    if (!serverBase || !audioRef.current) return
+    if (serverBase === null || !audioRef.current) return
 
     // Clean up any stale connection from a previous attempt
     pcRef.current?.close()
