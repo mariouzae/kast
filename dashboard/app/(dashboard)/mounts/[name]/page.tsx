@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeft, Copy, Music2, SkipForward, Users, Palette, Plus, Pencil, X, Check, TriangleAlert } from "lucide-react"
+import { ArrowLeft, ChevronsUpDown, Copy, Music2, SkipForward, Users, Palette, Plus, Pencil, X, Check, TriangleAlert } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -12,6 +12,10 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import {
+  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
+} from "@/components/ui/command"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import {
@@ -49,6 +53,87 @@ function CopyRow({ label, value }: { label: string; value: string }) {
         <Copy className="h-3 w-3" />
       </KBtn>
     </div>
+  )
+}
+
+// Searchable, scrollable playlist picker (replaces Radix Select, which didn't
+// scroll reliably with long lists and had no filtering).
+function PlaylistCombobox({
+  playlists, value, onChange, disabled, placeholder, noneLabel, className,
+}: {
+  playlists: APIPlaylist[]
+  value: string
+  onChange: (id: string) => void
+  disabled?: boolean
+  placeholder: string
+  /** When set, adds a "none" option that clears the selection (value ""). */
+  noneLabel?: string
+  className?: string
+}) {
+  const { t, tn } = useI18n()
+  const [open, setOpen] = React.useState(false)
+  const selected = playlists.find((pl) => pl.id === value)
+  const select = (id: string) => { onChange(id); setOpen(false) }
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          role="combobox"
+          aria-expanded={open}
+          disabled={disabled}
+          className={cn(
+            "flex h-8 w-full items-center justify-between gap-2 border border-ink-800 bg-ink-950 px-2.5 text-left text-[12.5px] text-ink-100 outline-none focus-visible:border-k-500/50 disabled:cursor-not-allowed disabled:opacity-50",
+            className,
+          )}
+        >
+          <span className={cn("truncate", !selected && "text-ink-500")}>
+            {selected ? selected.name : (noneLabel ?? placeholder)}
+            {selected && (
+              <span className="text-ink-500 ml-1.5 text-xs">
+                {tn(selected.track_paths?.length ?? 0, "{n} track", "{n} tracks")}
+              </span>
+            )}
+          </span>
+          <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-ink-500" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-(--radix-popover-trigger-width) min-w-64 p-0"
+        align="start"
+        // Keep wheel/touch scrolling inside the list.
+        onWheel={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
+      >
+        <Command>
+          <CommandInput placeholder={t("Search playlists…")} />
+          <CommandList className="max-h-64 overscroll-contain">
+            <CommandEmpty>{t("No playlists found.")}</CommandEmpty>
+            <CommandGroup>
+              {noneLabel && (
+                <CommandItem value="__none__" keywords={[noneLabel]} data-checked={value === ""} onSelect={() => select("")}>
+                  {noneLabel}
+                </CommandItem>
+              )}
+              {playlists.map((pl) => (
+                <CommandItem
+                  key={pl.id}
+                  value={pl.id}
+                  keywords={[pl.name]}
+                  data-checked={pl.id === value}
+                  onSelect={() => select(pl.id)}
+                >
+                  <span className="truncate">{pl.name}</span>
+                  <span className="text-ink-500 text-xs shrink-0">
+                    {tn(pl.track_paths?.length ?? 0, "{n} track", "{n} tracks")}
+                  </span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -811,18 +896,14 @@ function MountAutoDJTab({ mount }: { mount: Mount }) {
         {playlists.length === 0 ? (
           <p className="text-[12px] text-ink-500">{t("No playlists — create one from the Playlists page")}</p>
         ) : (
-          <Select value={selectedPlaylist} onValueChange={setSelectedPlaylist} disabled={acting}>
-            <SelectTrigger className="bg-ink-950 border-ink-800 text-ink-100 focus:ring-k-500/30">
-              <SelectValue placeholder={t("Select a playlist…")} />
-            </SelectTrigger>
-            <SelectContent>
-              {playlists.map((pl) => (
-                <SelectItem key={pl.id} value={pl.id}>
-                  {pl.name} <span className="text-ink-500 ml-1 text-xs">{tn(pl.track_paths?.length ?? 0, "{n} track", "{n} tracks")}</span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <PlaylistCombobox
+            playlists={playlists}
+            value={selectedPlaylist}
+            onChange={setSelectedPlaylist}
+            disabled={acting}
+            placeholder={t("Select a playlist…")}
+            className="h-9"
+          />
         )}
       </div>
 
@@ -847,24 +928,14 @@ function MountAutoDJTab({ mount }: { mount: Mount }) {
         <div className="rounded-md border border-ink-800 bg-ink-950/40 p-3 space-y-3">
           <div className="space-y-1">
             <p className="text-[10.5px] uppercase tracking-wider text-ink-500 font-mono">{t("Source playlist")}</p>
-            <Select
-              value={jinglePlaylistId || "__none__"}
-              onValueChange={(v) => setJinglePlaylistId(v === "__none__" ? "" : v)}
+            <PlaylistCombobox
+              playlists={playlists}
+              value={jinglePlaylistId}
+              onChange={setJinglePlaylistId}
               disabled={jingleSaving}
-            >
-              <SelectTrigger className="bg-ink-950 border-ink-800 text-ink-100 focus:ring-k-500/30 h-8 text-[12.5px]">
-                <SelectValue placeholder={t("None — disabled")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">{t("None — disabled")}</SelectItem>
-                {playlists.map((pl) => (
-                  <SelectItem key={pl.id} value={pl.id}>
-                    {pl.name}{" "}
-                    <span className="text-ink-500 ml-1 text-xs">{tn(pl.track_paths?.length ?? 0, "{n} track", "{n} tracks")}</span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              placeholder={t("None — disabled")}
+              noneLabel={t("None — disabled")}
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-2">
