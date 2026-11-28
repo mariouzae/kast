@@ -4,7 +4,7 @@ import * as React from "react"
 import { Plus, MoreHorizontal, Copy, Check, Trash2, Search } from "lucide-react"
 import { toast } from "sonner"
 import { useI18n, type TFunc } from "@/lib/i18n"
-import { api, type APIUser, type APIKey, type CreateAPIKeyResponse, type APIMount, type AppUser } from "@/lib/api"
+import { api, type APIUser, type APIKey, type CreateAPIKeyResponse, type APIMount, type AppUser, effectiveRadioName } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -298,9 +298,9 @@ export default function AccessPage() {
   const filteredAppUsers = appQuery ? appUsers.filter(u => u.email.toLowerCase().includes(appQuery)) : appUsers
 
   const selectedMount = mounts.find(m => m.name === appForm.mountId)
-  // Mount is optional, but a chosen mount must have a Radio Name.
+  // Mount is optional, but a chosen mount must have a Radio Name (or a description to fall back on).
   const appFormValid = !!appForm.email.trim() && appForm.password.length >= 6 &&
-    (!appForm.mountId || !!selectedMount?.radio_name)
+    (!appForm.mountId || (!!selectedMount && !!effectiveRadioName(selectedMount)))
 
   function openAppDialog() {
     setAppForm(emptyAppForm)
@@ -668,12 +668,12 @@ export default function AccessPage() {
                   {mounts.map(m => (
                     <SelectItem key={m.id} value={m.name}>
                       <span className="font-mono">{m.name}</span>
-                      {m.radio_name && <span className="text-ink-500"> — {m.radio_name}</span>}
+                      {effectiveRadioName(m) && <span className="text-ink-500"> — {effectiveRadioName(m)}</span>}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {selectedMount && !selectedMount.radio_name && (
+              {selectedMount && !effectiveRadioName(selectedMount) && (
                 <p className="text-[11.5px] text-amber-400">
                   {t("This mount has no Radio Name — set it on the mount first")}
                 </p>

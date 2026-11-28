@@ -3,7 +3,7 @@
 import * as React from "react"
 import { TriangleAlert } from "lucide-react"
 import { toast } from "sonner"
-import { api, type AppUser } from "@/lib/api"
+import { api, type AppUser, effectiveRadioName } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { useI18n } from "@/lib/i18n"
 import { Switch } from "@/components/ui/switch"
@@ -23,7 +23,7 @@ export function MountAppUsersTab({ mount }: { mount: Mount }) {
   const [saving, setSaving] = React.useState(false)
 
   const linked       = users.filter(u => u.mountId === mount.name)
-  const hasRadioName = !!mount.radioName
+  const hasRadioName = !!effectiveRadioName({ radio_name: mount.radioName, description: mount.description })
   const valid        = hasRadioName && isAppUserLinkValid(link, users, mount.name)
 
   async function handleSubmit() {

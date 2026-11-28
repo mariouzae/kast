@@ -4,6 +4,7 @@
 import { cert, getApps, initializeApp, type App } from "firebase-admin/app"
 import { getAuth } from "firebase-admin/auth"
 import { getFirestore } from "firebase-admin/firestore"
+import { effectiveRadioName } from "@/lib/api"
 
 // Existing app data lives in `users/{email}` — the document id is the user's
 // e-mail (lower-case, as Firebase Auth normalises it), not the Auth uid.
@@ -94,20 +95,22 @@ export function kastPublicUrl(req: Request): string {
 /**
  * Builds the full Firestore payload for a user linked to `mountId`. The mount is
  * resolved on the Kast server so radioName comes from the DB, not the client.
- * Returns an error Response when the mount is missing or has no Radio Name.
+ * Falls back to the mount's description when no Radio Name is set. Returns an
+ * error Response when the mount is missing or has neither.
  */
 export async function buildAppUserDoc(req: Request, mountId: string, enabled: boolean): Promise<AppUserDoc | Response> {
   const mountRes = await kastFetch(req, `/api/mounts/${encodeURIComponent(mountId.replace(/^\/+/, ""))}`)
   if (!mountRes.ok) return Response.json({ error: "Mount not found" }, { status: 400 })
-  const mount = (await mountRes.json()) as { name: string; radio_name?: string }
-  if (!mount.radio_name) {
+  const mount = (await mountRes.json()) as { name: string; radio_name?: string; description?: string }
+  const radioName = effectiveRadioName(mount)
+  if (!radioName) {
     return Response.json({ error: "This mount has no Radio Name — set it on the mount first" }, { status: 400 })
   }
   try {
     return {
       enabled,
       apiKey:    appApiKey(),
-      radioName: mount.radio_name,
+      radioName,
       kastUrl:   kastPublicUrl(req),
       mountId:   mount.name,
     }

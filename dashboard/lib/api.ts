@@ -57,6 +57,11 @@ export type APIDiskUsage = {
   used_percent: number
 }
 
+/** A mount's Radio Name, falling back to its description when no Radio Name is set. */
+export function effectiveRadioName(m: { radio_name?: string; description?: string }): string {
+  return (m.radio_name ?? "").trim() || (m.description ?? "").trim()
+}
+
 export type APIMount = {
   id:                   string
   name:                 string
