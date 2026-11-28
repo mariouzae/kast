@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Plus, MoreHorizontal, Copy, Check, Trash2, Search } from "lucide-react"
+import { Plus, MoreHorizontal, Copy, Check, Trash2, Search, Eye, EyeOff } from "lucide-react"
 import { toast } from "sonner"
 import { useI18n, type TFunc } from "@/lib/i18n"
 import { api, type APIUser, type APIKey, type CreateAPIKeyResponse, type APIMount, type AppUser, effectiveRadioName } from "@/lib/api"
@@ -27,6 +27,29 @@ import {
 } from "@/components/ui/select"
 
 // ── Types & helpers ───────────────────────────────────────────────────────────
+
+/** Password shown as dots; the eye button reveals it. "—" when no copy was saved. */
+function PasswordCell({ password, t }: { password?: string; t: TFunc }) {
+  const [shown, setShown] = React.useState(false)
+  if (!password) return <span className="text-[12px] text-ink-500">—</span>
+  return (
+    <div className="flex items-center gap-1 min-w-0">
+      <code className="text-[11.5px] text-ink-400 font-mono truncate">
+        {shown ? password : "•".repeat(8)}
+      </code>
+      <Button
+        size="icon"
+        variant="ghost"
+        className="h-6 w-6 shrink-0 text-ink-500 hover:text-ink-200"
+        aria-label={shown ? t("Hide password") : t("Show password")}
+        title={shown ? t("Hide password") : t("Show password")}
+        onClick={() => setShown(v => !v)}
+      >
+        {shown ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+      </Button>
+    </div>
+  )
+}
 
 type Role = "admin" | "operator" | "viewer"
 
@@ -545,8 +568,9 @@ export default function AccessPage() {
         </div>
 
         <div className="divide-y divide-ink-800">
-          <div className="grid grid-cols-[1fr_140px_1fr_44px_36px] gap-3 px-4 py-2">
+          <div className="grid grid-cols-[1fr_150px_140px_1fr_44px_36px] gap-3 px-4 py-2">
             <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">{t("E-mail")}</span>
+            <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">{t("Password")}</span>
             <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">{t("Mount")}</span>
             <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">{t("Radio Name")}</span>
             <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">{t("On")}</span>
@@ -557,8 +581,9 @@ export default function AccessPage() {
           <div className="max-h-[420px] overflow-y-auto divide-y divide-ink-800">
           {appUsersLoading ? (
             [0, 1].map(i => (
-              <div key={i} className="grid grid-cols-[1fr_140px_1fr_44px_36px] gap-3 px-4 py-3 items-center">
+              <div key={i} className="grid grid-cols-[1fr_150px_140px_1fr_44px_36px] gap-3 px-4 py-3 items-center">
                 <Skeleton className="h-4 w-36" />
+                <Skeleton className="h-4 w-24" />
                 <Skeleton className="h-4 w-20" />
                 <Skeleton className="h-4 w-24" />
                 <Skeleton className="h-5 w-8 rounded-full" />
@@ -573,8 +598,9 @@ export default function AccessPage() {
             <div className="px-4 py-10 text-center text-[12.5px] text-ink-500">{t("No users match \"{query}\"", { query: appSearch.trim() })}</div>
           ) : (
             filteredAppUsers.map(u => (
-              <div key={u.email} className="grid grid-cols-[1fr_140px_1fr_44px_36px] gap-3 px-4 py-3 items-center">
+              <div key={u.email} className="grid grid-cols-[1fr_150px_140px_1fr_44px_36px] gap-3 px-4 py-3 items-center">
                 <span className="text-[13px] text-ink-100 font-medium truncate">{u.email}</span>
+                <PasswordCell password={u.password} t={t} />
                 <code className="text-[11.5px] text-ink-400 font-mono truncate">{u.mountId || "—"}</code>
                 <span className="text-[12px] text-ink-400 truncate">{u.radioName || "—"}</span>
                 <Switch

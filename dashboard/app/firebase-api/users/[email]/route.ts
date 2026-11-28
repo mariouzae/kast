@@ -1,5 +1,5 @@
 import {
-  APP_USERS_COLLECTION, buildAppUserDoc, errorResponse, firebaseAuth, firestore, requireAdmin,
+  APP_USER_SECRETS_COLLECTION, APP_USERS_COLLECTION, buildAppUserDoc, errorResponse, firebaseAuth, firestore, requireAdmin,
 } from "@/lib/firebase-admin"
 
 export const dynamic = "force-dynamic"
@@ -42,7 +42,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ email: string
 
 /**
  * DELETE /firebase-api/users/{email} — removes the Firebase Auth account and the
- * Firestore `users/{email}` doc. Auth goes first; a missing Auth account (legacy
+ * Firestore `users/{email}` and `appUserSecrets/{email}` docs. Auth goes first; a missing Auth account (legacy
  * docs) is fine, so a retry after a partial failure always finishes the job.
  */
 export async function DELETE(req: Request, ctx: { params: Promise<{ email: string }> }) {
@@ -57,6 +57,7 @@ export async function DELETE(req: Request, ctx: { params: Promise<{ email: strin
       if ((e as { code?: string })?.code !== "auth/user-not-found") throw e
     }
     await firestore().collection(APP_USERS_COLLECTION).doc(email).delete()
+    await firestore().collection(APP_USER_SECRETS_COLLECTION).doc(email).delete()
     return new Response(null, { status: 204 })
   } catch (e) {
     return errorResponse(e)

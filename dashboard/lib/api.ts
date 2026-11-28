@@ -757,6 +757,8 @@ export type AppUser = {
   enabled:   boolean
   mountId:   string
   radioName: string
+  /** Copy of the password saved at creation; "" for users created before that. */
+  password?: string
 }
 
 export type CreateAppUserBody = {

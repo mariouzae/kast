@@ -340,6 +340,8 @@ export const ptBR: Record<string, string> = {
   "Others": "Outros",
   "Overview": "Visão geral",
   "Password": "Senha",
+  "Show password": "Mostrar senha",
+  "Hide password": "Ocultar senha",
   "Password must be at least 8 characters": "A senha deve ter pelo menos 8 caracteres",
   "password must be at least 8 characters": "A senha deve ter pelo menos 8 caracteres",
   "Password updated": "Senha atualizada",

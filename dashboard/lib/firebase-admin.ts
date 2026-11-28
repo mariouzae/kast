@@ -10,6 +10,11 @@ import { effectiveRadioName } from "@/lib/api"
 // e-mail (lower-case, as Firebase Auth normalises it), not the Auth uid.
 export const APP_USERS_COLLECTION = "users"
 
+// Copy of each app user's password, keyed by e-mail, so admins can see it in the
+// portal (Firebase Auth only keeps a hash). Kept out of `users/{email}` so the
+// mobile app never reads it; only this server (Admin SDK) touches it.
+export const APP_USER_SECRETS_COLLECTION = "appUserSecrets"
+
 /** Shape written to Firestore `users/{email}`. Older docs may lack some fields. */
 export type AppUserDoc = {
   enabled:   boolean
