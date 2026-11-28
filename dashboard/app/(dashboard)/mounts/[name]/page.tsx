@@ -27,6 +27,7 @@ import {
 
 const BITRATE_OPTIONS = ["64k", "96k", "128k", "192k", "256k", "320k"] as const
 import { type Mount, adaptApiMount, PulseDot, KBtn } from "../page"
+import { MountAppUsersTab } from "./app-users-tab"
 import { SettingsContext } from "@/app/(dashboard)/layout"
 import { useI18n, type TFunc } from "@/lib/i18n"
 
@@ -209,6 +210,7 @@ function MountInfoTab({ mount, nowPlaying, onRefreshNowPlaying, history, onUpdat
   const [saving,  setSaving]  = React.useState(false)
 
   // Edit field state — reset whenever mount changes or edit is cancelled
+  const [radioName, setRadioName] = React.useState(mount.radioName)
   const [desc,     setDesc]     = React.useState(mount.description)
   const [genre,    setGenre]    = React.useState(mount.genre)
   const [website,  setWebsite]  = React.useState(mount.website)
@@ -217,7 +219,7 @@ function MountInfoTab({ mount, nowPlaying, onRefreshNowPlaying, history, onUpdat
   const [protocol, setProtocol] = React.useState(mount.protocol)
 
   const openEdit = () => {
-    setDesc(mount.description); setGenre(mount.genre); setWebsite(mount.website)
+    setRadioName(mount.radioName); setDesc(mount.description); setGenre(mount.genre); setWebsite(mount.website)
     setCodec(mount.codec); setBitrate(mount.bitrate); setProtocol(mount.protocol)
     setEditing(true)
   }
@@ -226,13 +228,13 @@ function MountInfoTab({ mount, nowPlaying, onRefreshNowPlaying, history, onUpdat
   const handleSave = () => {
     setSaving(true)
     const body: UpdateMountMetadataBody = {
-      description: desc, genre, website, codec, bitrate, protocol,
+      radio_name: radioName, description: desc, genre, website, codec, bitrate, protocol,
     }
     api.mounts.updateMetadata(mount.name, body)
       .then((updated) => {
         toast.success(updated.autodj_restarted ? t("Mount updated — AutoDJ restarted") : t("Mount updated"))
         onUpdated({
-          description: updated.description, genre: updated.genre,
+          radioName: updated.radio_name ?? "", description: updated.description, genre: updated.genre,
           website: updated.website, codec: updated.codec,
           bitrate: updated.bitrate, protocol: updated.protocol,
         })
@@ -312,6 +314,10 @@ function MountInfoTab({ mount, nowPlaying, onRefreshNowPlaying, history, onUpdat
             ))}
             <div className="pt-1 space-y-2">
               <div className="space-y-1">
+                <p className="text-[10.5px] uppercase tracking-wider text-ink-600 font-mono">{t("Radio Name")}</p>
+                <input className={inputCls} value={radioName} onChange={(e) => setRadioName(e.target.value)} placeholder={t("e.g. Rádio WorkPlay")} />
+              </div>
+              <div className="space-y-1">
                 <p className="text-[10.5px] uppercase tracking-wider text-ink-600 font-mono">{t("Description")}</p>
                 <input className={inputCls} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={t("Station description")} />
               </div>
@@ -328,7 +334,8 @@ function MountInfoTab({ mount, nowPlaying, onRefreshNowPlaying, history, onUpdat
         ) : (
           <div className="space-y-1.5">
             {[
-              ["Name", mount.name], ["Description", mount.description || "—"],
+              ["Name", mount.name], ["Radio Name", mount.radioName || "—"],
+              ["Description", mount.description || "—"],
               ["Genre", mount.genre || "—"], ["Website", mount.website || "—"],
               ["Created", mount.created],
             ].map(([k, v]) => (
@@ -1148,6 +1155,7 @@ export default function MountDetailPage() {
                   </span>
                 )}
               </TabsTrigger>
+              <TabsTrigger value="app-users">{t("App Users")}</TabsTrigger>
               <TabsTrigger value="danger" className="text-red-400/70 data-[state=active]:text-red-400">{t("Danger")}</TabsTrigger>
             </TabsList>
 
@@ -1171,6 +1179,9 @@ export default function MountDetailPage() {
             </TabsContent>
             <TabsContent value="listeners">
               <MountListenersTab mount={mount} />
+            </TabsContent>
+            <TabsContent value="app-users">
+              <MountAppUsersTab mount={mount} />
             </TabsContent>
             <TabsContent value="danger">
               <MountDangerTab mount={mount} onDeleted={() => router.push("/mounts")} />

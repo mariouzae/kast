@@ -11,13 +11,16 @@ import { toast } from "sonner"
 import { api, type APIMount } from "@/lib/api"
 import { SettingsContext } from "@/app/(dashboard)/layout"
 import { useI18n } from "@/lib/i18n"
+import {
+  AppUserLinkFields, emptyAppUserLink, isAppUserLinkValid, submitAppUserLink, useAppUsers,
+} from "@/components/app-user-link"
 
 // ── Types ──
 
 export type Mount = {
   id: string; name: string; protocol: string; codec: string; bitrate: string
   listeners: number; status: "idle" | "live" | "error"; created: string
-  description: string; genre: string; website: string
+  radioName: string; description: string; genre: string; website: string
   playerStationName: string; playerAccent: string; playerAccentSoft: string
   playerTheme: string; playerLayout: string; playerAmbient: boolean
   playerShowAbout: boolean; playerShowHistory: boolean; playerShowPlaylist: boolean
@@ -29,7 +32,7 @@ export function adaptApiMount(m: APIMount): Mount {
     id: m.id, name: m.name, protocol: m.protocol || "HLS",
     codec: m.codec || "AAC", bitrate: m.bitrate || "128k",
     listeners: m.listeners, status: m.status as Mount["status"],
-    created: m.created_at.slice(0, 10), description: m.description,
+    created: m.created_at.slice(0, 10), radioName: m.radio_name ?? "", description: m.description,
     genre: m.genre, website: m.website,
     playerStationName: m.player_station_name ?? "",
     playerAccent: m.player_accent ?? "#E85D2F",
@@ -74,26 +77,55 @@ export function KBtn({
 
 // ── Create Mount Dialog ──
 
+// The Source Password field is hidden from the dashboard, but the server still
+// requires one (min 8 chars), so each new mount gets a random 32-char hex value.
+function generateSourcePassword(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  return Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("")
+}
+
 function CreateMountDialog({ onCreated }: { onCreated: (m: Mount) => void }) {
   const [open, setOpen]                     = React.useState(false)
   const [name, setName]                     = React.useState("")
-  const [sourcePassword, setSourcePassword] = React.useState("")
-  const [bitrate, setBitrate]               = React.useState("128k")
-  const [codec, setCodec]                   = React.useState("AAC")
+  const [radioName, setRadioName]           = React.useState("")
+  const [bitrate, setBitrate]               = React.useState("64k")
+  const [codec, setCodec]                   = React.useState("MP3")
   const [protocol, setProtocol]             = React.useState("HLS")
   const [description, setDescription]       = React.useState("")
   const [genre, setGenre]                   = React.useState("")
   const [loading, setLoading]               = React.useState(false)
+  const [link, setLink]                     = React.useState(() => emptyAppUserLink("existing"))
+  const appUsers = useAppUsers(open)
   const { t } = useI18n()
 
-  const reset = () => { setName(""); setSourcePassword(""); setDescription(""); setGenre(""); setBitrate("128k"); setCodec("AAC"); setProtocol("HLS") }
+  const linkValid = isAppUserLinkValid(link, appUsers.users)
+  const reset = () => { setLink(emptyAppUserLink("existing")); setName(""); setRadioName(""); setDescription(""); setGenre(""); setBitrate("64k"); setCodec("MP3"); setProtocol("HLS") }
 
   const handleCreate = () => {
-    if (!name.trim() || sourcePassword.length < 8) return
+    if (!name.trim() || !radioName.trim() || !linkValid) return
     setLoading(true)
     const normalized = name.startsWith("/") ? name : "/" + name
-    api.mounts.create({ name: normalized, source_password: sourcePassword, bitrate, codec, protocol, description, genre })
-      .then((m) => { onCreated(adaptApiMount(m)); toast.success(t("Mount {name} created", { name: normalized })); setOpen(false); reset() })
+    api.mounts.create({ name: normalized, radio_name: radioName.trim(), source_password: generateSourcePassword(), bitrate, codec, protocol, description, genre })
+      .then(async (m) => {
+        // A new mount must always have an app user. If linking fails, remove the
+        // mount again and keep the dialog open so the admin can fix and retry.
+        try {
+          const result = await submitAppUserLink(link, m.name)
+          onCreated(adaptApiMount(m))
+          toast.success(t("Mount {name} created", { name: normalized }))
+          if (result === "created") toast.success(t("App user created"))
+          if (result === "linked") toast.success(t("User linked to {mount}", { mount: m.name }))
+          setOpen(false); reset()
+        } catch (e: unknown) {
+          const error = e instanceof Error ? t(e.message) : String(e)
+          await api.mounts.delete(m.name)
+            .then(() => toast.error(t("Linking the app user failed, so the mount was not created: {error}", { error })))
+            .catch(() => {
+              onCreated(adaptApiMount(m))
+              toast.error(t("Mount created, but linking the app user failed: {error}", { error }))
+            })
+        }
+      })
       .catch((err) => toast.error(t("Create failed: {error}", { error: err.message })))
       .finally(() => setLoading(false))
   }
@@ -110,7 +142,7 @@ function CreateMountDialog({ onCreated }: { onCreated: (m: Mount) => void }) {
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
           onClick={(e) => { if (e.target === e.currentTarget) { setOpen(false); reset() } }}>
-          <div className="w-full max-w-md rounded-lg border border-ink-800 bg-ink-900 p-5 space-y-4">
+          <div className="w-full max-w-md max-h-[calc(100vh-2rem)] overflow-y-auto rounded-lg border border-ink-800 bg-ink-900 p-5 space-y-4">
             <div>
               <h2 className="text-[15px] font-semibold text-ink-100">{t("New Mount")}</h2>
               <p className="text-[12px] text-ink-500 mt-0.5">{t("Create a new stream endpoint")}</p>
@@ -121,8 +153,20 @@ function CreateMountDialog({ onCreated }: { onCreated: (m: Mount) => void }) {
                 <input className={cn(inputCls, "font-mono")} placeholder="/radio1" value={name} onChange={(e) => setName(e.target.value)} />
               </div>
               <div className="space-y-1">
-                <label className="text-[11px] uppercase tracking-wider text-ink-500 font-mono">{t("Source Password *")}</label>
-                <input className={inputCls} type="password" placeholder={t("min 8 characters")} value={sourcePassword} onChange={(e) => setSourcePassword(e.target.value)} />
+                <label className="text-[11px] uppercase tracking-wider text-ink-500 font-mono">{t("Radio Name *")}</label>
+                <input className={inputCls} placeholder={t("e.g. Rádio WorkPlay")} value={radioName} onChange={(e) => setRadioName(e.target.value)} />
+              </div>
+              <div className="space-y-2 rounded-md border border-ink-800 bg-ink-950/40 p-3">
+                <label className="text-[11px] uppercase tracking-wider text-ink-500 font-mono">{t("App user *")}</label>
+                <AppUserLinkFields
+                  value={link}
+                  onChange={setLink}
+                  users={appUsers.users}
+                  usersLoading={appUsers.loading}
+                  usersError={appUsers.error}
+                  hideEnabled
+                  idPrefix="new-mount-app-user"
+                />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
@@ -163,7 +207,7 @@ function CreateMountDialog({ onCreated }: { onCreated: (m: Mount) => void }) {
             </div>
             <div className="flex justify-end gap-2 pt-1">
               <button onClick={() => { setOpen(false); reset() }} className="h-9 px-4 rounded-md border border-ink-800 hover:bg-ink-800 text-[13px] text-ink-200 transition-colors">{t("Cancel")}</button>
-              <button onClick={handleCreate} disabled={!name || sourcePassword.length < 8 || loading}
+              <button onClick={handleCreate} disabled={!name || !radioName.trim() || !linkValid || loading}
                 className="h-9 px-4 bg-k-500 hover:bg-k-400 disabled:opacity-50 text-white text-[13px] font-semibold transition-colors">
                 {loading ? t("Creating…") : t("Create")}
               </button>

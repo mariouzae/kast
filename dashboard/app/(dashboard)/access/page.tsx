@@ -1,10 +1,10 @@
 "use client"
 
 import * as React from "react"
-import { Plus, MoreHorizontal, Copy, Check, Trash2 } from "lucide-react"
+import { Plus, MoreHorizontal, Copy, Check, Trash2, Search } from "lucide-react"
 import { toast } from "sonner"
 import { useI18n, type TFunc } from "@/lib/i18n"
-import { api, type APIUser, type APIKey, type CreateAPIKeyResponse } from "@/lib/api"
+import { api, type APIUser, type APIKey, type CreateAPIKeyResponse, type APIMount, type AppUser } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -29,6 +29,8 @@ import {
 // ── Types & helpers ───────────────────────────────────────────────────────────
 
 type Role = "admin" | "operator" | "viewer"
+
+const NO_MOUNT = "__none__"
 
 function relativeTime(dateStr: string | null, t: TFunc): string {
   if (!dateStr) return t("never")
@@ -99,6 +101,19 @@ export default function AccessPage() {
   // Delete API key confirm
   const [deleteKeyTarget, setDeleteKeyTarget] = React.useState<APIKey | null>(null)
   const [deletingKey, setDeletingKey] = React.useState(false)
+
+  // App users (Firebase)
+  const [appUsers, setAppUsers] = React.useState<AppUser[]>([])
+  const [appUsersLoading, setAppUsersLoading] = React.useState(true)
+  const [appUsersError, setAppUsersError] = React.useState<string | null>(null)
+  const [appSearch, setAppSearch] = React.useState("")
+  const [deleteAppTarget, setDeleteAppTarget] = React.useState<AppUser | null>(null)
+  const [deletingApp, setDeletingApp] = React.useState(false)
+  const [mounts, setMounts] = React.useState<APIMount[]>([])
+  const emptyAppForm = { enabled: true, email: "", password: "", mountId: "" }
+  const [appOpen, setAppOpen] = React.useState(false)
+  const [appForm, setAppForm] = React.useState(emptyAppForm)
+  const [appSaving, setAppSaving] = React.useState(false)
   const { t, tn, tx, lang } = useI18n()
 
   async function loadUsers() {
@@ -124,9 +139,30 @@ export default function AccessPage() {
     }
   }
 
+  async function loadAppUsers() {
+    try {
+      setAppUsers(await api.appUsers.list())
+      setAppUsersError(null)
+    } catch (e: unknown) {
+      setAppUsersError(e instanceof Error ? e.message : t("Failed to load app users"))
+    } finally {
+      setAppUsersLoading(false)
+    }
+  }
+
+  async function loadMounts() {
+    try {
+      setMounts(await api.mounts.list() ?? [])
+    } catch {
+      // The mount select just stays empty; the create dialog explains why.
+    }
+  }
+
   React.useEffect(() => {
     loadUsers()
     loadKeys()
+    loadAppUsers()
+    loadMounts()
   }, [])
 
   // ── User handlers ──────────────────────────────────────────────────────────
@@ -253,6 +289,67 @@ export default function AccessPage() {
       toast.error(e instanceof Error ? e.message : t("Failed to delete API key"))
     } finally {
       setDeletingKey(false)
+    }
+  }
+
+  // ── App user handlers ──────────────────────────────────────────────────────
+
+  const appQuery = appSearch.trim().toLowerCase()
+  const filteredAppUsers = appQuery ? appUsers.filter(u => u.email.toLowerCase().includes(appQuery)) : appUsers
+
+  const selectedMount = mounts.find(m => m.name === appForm.mountId)
+  // Mount is optional, but a chosen mount must have a Radio Name.
+  const appFormValid = !!appForm.email.trim() && appForm.password.length >= 6 &&
+    (!appForm.mountId || !!selectedMount?.radio_name)
+
+  function openAppDialog() {
+    setAppForm(emptyAppForm)
+    setAppOpen(true)
+    loadMounts()
+  }
+
+  async function handleCreateAppUser() {
+    if (!appFormValid) return
+    setAppSaving(true)
+    try {
+      await api.appUsers.create({
+        enabled:  appForm.enabled,
+        email:    appForm.email.trim(),
+        password: appForm.password,
+        ...(appForm.mountId ? { mountId: appForm.mountId } : {}),
+      })
+      toast.success(t("App user created"))
+      setAppOpen(false)
+      await loadAppUsers()
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? t(e.message) : t("Failed to create app user"))
+    } finally {
+      setAppSaving(false)
+    }
+  }
+
+  async function handleToggleAppUser(u: AppUser) {
+    setAppUsers(list => list.map(x => x.email === u.email ? { ...x, enabled: !u.enabled } : x))
+    try {
+      await api.appUsers.setEnabled(u.email, !u.enabled)
+    } catch (e: unknown) {
+      setAppUsers(list => list.map(x => x.email === u.email ? { ...x, enabled: u.enabled } : x))
+      toast.error(e instanceof Error ? t(e.message) : t("Failed to update app user"))
+    }
+  }
+
+  async function handleDeleteAppUser() {
+    if (!deleteAppTarget) return
+    setDeletingApp(true)
+    try {
+      await api.appUsers.delete(deleteAppTarget.email)
+      setAppUsers(list => list.filter(x => x.email !== deleteAppTarget.email))
+      toast.success(t("App user deleted"))
+      setDeleteAppTarget(null)
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? t(e.message) : t("Failed to delete app user"))
+    } finally {
+      setDeletingApp(false)
     }
   }
 
@@ -423,6 +520,174 @@ export default function AccessPage() {
           )}
         </div>
       </div>
+
+      {/* ── App users table (Firebase) ───────────────────────────────────────── */}
+      <div className="rounded-lg border border-ink-800 bg-ink-900">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-ink-800">
+          <h2 className="text-[13px] font-semibold text-ink-100">{t("App Users")}</h2>
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-500" />
+              <Input
+                type="search"
+                value={appSearch}
+                onChange={e => setAppSearch(e.target.value)}
+                placeholder={t("Search by e-mail")}
+                aria-label={t("Search by e-mail")}
+                className="h-7 w-48 sm:w-60 pl-7 text-xs"
+              />
+            </div>
+            <Button size="sm" variant="outline" className="h-7 gap-1.5 text-xs" onClick={openAppDialog}>
+              <Plus className="h-3.5 w-3.5" />
+              {t("Add new user")}
+            </Button>
+          </div>
+        </div>
+
+        <div className="divide-y divide-ink-800">
+          <div className="grid grid-cols-[1fr_140px_1fr_44px_36px] gap-3 px-4 py-2">
+            <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">{t("E-mail")}</span>
+            <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">{t("Mount")}</span>
+            <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">{t("Radio Name")}</span>
+            <span className="text-[11px] font-medium uppercase tracking-wide text-ink-500">{t("On")}</span>
+            <span />
+          </div>
+
+          {/* Rows scroll inside the box so a long list doesn't stretch the page. */}
+          <div className="max-h-[420px] overflow-y-auto divide-y divide-ink-800">
+          {appUsersLoading ? (
+            [0, 1].map(i => (
+              <div key={i} className="grid grid-cols-[1fr_140px_1fr_44px_36px] gap-3 px-4 py-3 items-center">
+                <Skeleton className="h-4 w-36" />
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-5 w-8 rounded-full" />
+                <Skeleton className="h-6 w-6 rounded" />
+              </div>
+            ))
+          ) : appUsersError ? (
+            <div className="px-4 py-10 text-center text-[12.5px] text-red-400">{t(appUsersError)}</div>
+          ) : appUsers.length === 0 ? (
+            <div className="px-4 py-10 text-center text-[12.5px] text-ink-500">{t("No app users yet")}</div>
+          ) : filteredAppUsers.length === 0 ? (
+            <div className="px-4 py-10 text-center text-[12.5px] text-ink-500">{t("No users match \"{query}\"", { query: appSearch.trim() })}</div>
+          ) : (
+            filteredAppUsers.map(u => (
+              <div key={u.email} className="grid grid-cols-[1fr_140px_1fr_44px_36px] gap-3 px-4 py-3 items-center">
+                <span className="text-[13px] text-ink-100 font-medium truncate">{u.email}</span>
+                <code className="text-[11.5px] text-ink-400 font-mono truncate">{u.mountId || "—"}</code>
+                <span className="text-[12px] text-ink-400 truncate">{u.radioName || "—"}</span>
+                <Switch
+                  checked={u.enabled}
+                  onCheckedChange={() => handleToggleAppUser(u)}
+                  className="data-[state=checked]:bg-k-500"
+                />
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6 text-ink-500 hover:text-red-400"
+                  aria-label={t("Delete")}
+                  onClick={() => setDeleteAppTarget(u)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))
+          )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Delete App User AlertDialog ───────────────────────────────────────── */}
+      <AlertDialog open={!!deleteAppTarget} onOpenChange={open => { if (!open && !deletingApp) setDeleteAppTarget(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("Delete \"{name}\"?", { name: deleteAppTarget?.email ?? "" })}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("This removes the Firebase login and the app user's data. The user will no longer be able to sign in to the app. This cannot be undone.")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingApp}>{t("Cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white"
+              disabled={deletingApp}
+              onClick={e => { e.preventDefault(); handleDeleteAppUser() }}
+            >
+              {deletingApp ? t("Deleting…") : t("Delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Add App User Dialog ──────────────────────────────────────────────── */}
+      <Dialog open={appOpen} onOpenChange={open => { if (!appSaving) setAppOpen(open) }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader><DialogTitle>{t("Add new user")}</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs">{t("Enabled")}</Label>
+              <Switch
+                checked={appForm.enabled}
+                onCheckedChange={v => setAppForm(f => ({ ...f, enabled: v }))}
+                className="data-[state=checked]:bg-k-500"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">{t("E-mail")}</Label>
+              <Input
+                type="email"
+                value={appForm.email}
+                onChange={e => setAppForm(f => ({ ...f, email: e.target.value }))}
+                placeholder="user@example.com"
+                autoComplete="off"
+                className="h-8 text-sm"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">{t("Password")}</Label>
+              <Input
+                type="password"
+                value={appForm.password}
+                onChange={e => setAppForm(f => ({ ...f, password: e.target.value }))}
+                placeholder={t("Min. 6 characters")}
+                autoComplete="new-password"
+                className="h-8 text-sm"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">{t("Mount")} <span className="text-ink-500 font-normal">{t("(optional)")}</span></Label>
+              {/* Radix Select can't use "" as an item value, so "No mount" maps to a sentinel. */}
+              <Select
+                value={appForm.mountId || NO_MOUNT}
+                onValueChange={v => setAppForm(f => ({ ...f, mountId: v === NO_MOUNT ? "" : v }))}
+              >
+                <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_MOUNT}><span className="text-ink-400">{t("No mount")}</span></SelectItem>
+                  {mounts.map(m => (
+                    <SelectItem key={m.id} value={m.name}>
+                      <span className="font-mono">{m.name}</span>
+                      {m.radio_name && <span className="text-ink-500"> — {m.radio_name}</span>}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedMount && !selectedMount.radio_name && (
+                <p className="text-[11.5px] text-amber-400">
+                  {t("This mount has no Radio Name — set it on the mount first")}
+                </p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" size="sm" onClick={() => setAppOpen(false)} disabled={appSaving}>{t("Cancel")}</Button>
+            <Button size="sm" onClick={handleCreateAppUser} disabled={appSaving || !appFormValid}>
+              {appSaving ? t("Creating…") : t("Create User")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Add User Dialog ──────────────────────────────────────────────────── */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>

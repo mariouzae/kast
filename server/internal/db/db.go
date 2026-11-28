@@ -149,6 +149,7 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE mounts ADD COLUMN jingle_every_tracks  INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE mounts ADD COLUMN jingle_every_minutes INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE tracks ADD COLUMN mtime_unix INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE mounts ADD COLUMN radio_name TEXT NOT NULL DEFAULT ''`,
 	} {
 		if _, err := db.Exec(alter); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
 			return fmt.Errorf("db: %s: %w", alter, err)

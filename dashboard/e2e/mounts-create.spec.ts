@@ -10,7 +10,7 @@ test("create a mount and see it in the list and detail view", async ({ page }) =
   await page.getByRole("button", { name: "New Mount" }).click()
 
   await page.getByPlaceholder("/radio1").fill(slug)
-  await page.getByPlaceholder("min 8 characters").fill("e2e-source-password")
+  await page.getByPlaceholder("e.g. Rádio WorkPlay").fill("E2E Radio")
   await page.getByRole("button", { name: "Create" }).click()
 
   const row = page.locator(".kast-row", { hasText: `/${slug}` })

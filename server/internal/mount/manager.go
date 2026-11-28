@@ -28,6 +28,7 @@ const (
 type Mount struct {
 	ID             string    `json:"id"`
 	Name           string    `json:"name"`
+	RadioName      string    `json:"radio_name"`
 	Description    string    `json:"description"`
 	Genre          string    `json:"genre"`
 	Website        string    `json:"website"`
@@ -56,6 +57,8 @@ type Mount struct {
 
 // MetadataUpdate is the DTO for updating a mount's editable metadata fields.
 type MetadataUpdate struct {
+	// RadioName is optional: nil leaves the stored value unchanged.
+	RadioName   *string `json:"radio_name"`
 	Description string `json:"description"`
 	Genre       string `json:"genre"`
 	Website     string `json:"website"`
@@ -154,6 +157,7 @@ func (m *Manager) Get(name string) (*Mount, error) {
 // CreateRequest is the input DTO for creating a mount.
 type CreateRequest struct {
 	Name           string `json:"name"`
+	RadioName      string `json:"radio_name"`
 	Description    string `json:"description"`
 	Genre          string `json:"genre"`
 	Website        string `json:"website"`
@@ -206,6 +210,7 @@ func (m *Manager) Create(req CreateRequest) (*Mount, error) {
 	mt := &Mount{
 		ID:             newID(),
 		Name:           req.Name,
+		RadioName:      strings.TrimSpace(req.RadioName),
 		Description:    req.Description,
 		Genre:          req.Genre,
 		Website:        req.Website,
@@ -314,6 +319,9 @@ func (m *Manager) UpdateMetadata(name string, req MetadataUpdate) error {
 	if !ok {
 		return ErrNotFound
 	}
+	if req.RadioName != nil {
+		mt.RadioName = strings.TrimSpace(*req.RadioName)
+	}
 	mt.Description = req.Description
 	mt.Genre       = req.Genre
 	mt.Website     = req.Website
@@ -338,9 +346,9 @@ func (m *Manager) UpdateMetadata(name string, req MetadataUpdate) error {
 	}
 
 	_, err := m.db.Exec(`
-		UPDATE mounts SET description=?, genre=?, website=?, codec=?, bitrate=?, protocol=?
+		UPDATE mounts SET radio_name=?, description=?, genre=?, website=?, codec=?, bitrate=?, protocol=?
 		WHERE name=?`,
-		mt.Description, mt.Genre, mt.Website, mt.Codec, mt.Bitrate, mt.Protocol, name,
+		mt.RadioName, mt.Description, mt.Genre, mt.Website, mt.Codec, mt.Bitrate, mt.Protocol, name,
 	)
 	if err != nil {
 		slog.Error("mount: db update metadata", "err", err)
@@ -402,14 +410,16 @@ func (m *Manager) insertDB(mt *Mount) error {
 			player_station_name, player_accent, player_accent_soft,
 			player_theme, player_layout,
 			player_ambient, player_show_about, player_show_history, player_show_playlist,
-			jingle_playlist_id, jingle_every_tracks, jingle_every_minutes
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			jingle_playlist_id, jingle_every_tracks, jingle_every_minutes,
+			radio_name
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		mt.ID, mt.Name, mt.Description, mt.Genre, mt.Website, mt.SourcePassword,
 		mt.Protocol, mt.Codec, mt.Bitrate, mt.CreatedAt.UTC().Format(time.RFC3339),
 		mt.PlayerStationName, mt.PlayerAccent, mt.PlayerAccentSoft,
 		mt.PlayerTheme, mt.PlayerLayout,
 		btoi(mt.PlayerAmbient), btoi(mt.PlayerShowAbout), btoi(mt.PlayerShowHistory), btoi(mt.PlayerShowPlaylist),
 		mt.JinglePlaylistID, mt.JingleEveryTracks, mt.JingleEveryMinutes,
+		mt.RadioName,
 	)
 	return err
 }
@@ -421,7 +431,8 @@ func (m *Manager) load() error {
 		       player_station_name, player_accent, player_accent_soft,
 		       player_theme, player_layout,
 		       player_ambient, player_show_about, player_show_history, player_show_playlist,
-		       jingle_playlist_id, jingle_every_tracks, jingle_every_minutes
+		       jingle_playlist_id, jingle_every_tracks, jingle_every_minutes,
+		       radio_name
 		FROM mounts`)
 	if err != nil {
 		return fmt.Errorf("mount: load: %w", err)
@@ -441,6 +452,7 @@ func (m *Manager) load() error {
 			&mt.PlayerTheme, &mt.PlayerLayout,
 			&ambient, &showAbout, &showHistory, &showPlaylist,
 			&mt.JinglePlaylistID, &mt.JingleEveryTracks, &mt.JingleEveryMinutes,
+			&mt.RadioName,
 		); err != nil {
 			return fmt.Errorf("mount: load scan: %w", err)
 		}

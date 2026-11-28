@@ -60,6 +60,7 @@ export type APIDiskUsage = {
 export type APIMount = {
   id:                   string
   name:                 string
+  radio_name:           string
   description:          string
   genre:                string
   website:              string
@@ -186,6 +187,7 @@ export type StartImportBody = {
 
 export type CreateMountBody = {
   name:            string
+  radio_name?:     string
   description?:    string
   genre?:          string
   website?:        string
@@ -196,6 +198,7 @@ export type CreateMountBody = {
 }
 
 export type UpdateMountMetadataBody = {
+  radio_name?:  string
   description?: string
   genre?:       string
   website?:     string
@@ -723,4 +726,56 @@ export const api = {
     delete: (id: string) =>
       apiFetch<void>(`/api/apikeys/${id}`, { method: "DELETE" }),
   },
+
+  /** Mobile-app users stored in Firebase (served by the dashboard's own /firebase-api routes). */
+  appUsers: {
+    list: () => firebaseFetch<AppUser[]>("/firebase-api/users"),
+    create: (body: CreateAppUserBody) =>
+      firebaseFetch<AppUser>("/firebase-api/users", { method: "POST", body: JSON.stringify(body) }),
+    setEnabled: (email: string, enabled: boolean) =>
+      firebaseFetch<{ email: string; enabled: boolean }>(`/firebase-api/users/${encodeURIComponent(email)}`, {
+        method: "PATCH", body: JSON.stringify({ enabled }),
+      }),
+    /** Deletes the Firebase Auth account and the Firestore users/{email} doc. */
+    delete: (email: string) =>
+      firebaseFetch<void>(`/firebase-api/users/${encodeURIComponent(email)}`, { method: "DELETE" }),
+    /** Links an existing app user to a mount, rewriting apiKey/radioName/kastUrl/mountId. */
+    linkToMount: (email: string, mountId: string, enabled: boolean) =>
+      firebaseFetch<AppUser>(`/firebase-api/users/${encodeURIComponent(email)}`, {
+        method: "PATCH", body: JSON.stringify({ enabled, mountId }),
+      }),
+  },
+}
+
+export type AppUser = {
+  email:     string
+  enabled:   boolean
+  mountId:   string
+  radioName: string
+}
+
+export type CreateAppUserBody = {
+  enabled:  boolean
+  email:    string
+  password: string
+  /** Optional — omit to create the user without a mount. */
+  mountId?: string
+}
+
+/** Like apiFetch, but unwraps the `{ error }` JSON body into the thrown message. */
+async function firebaseFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, {
+    ...init,
+    headers:     { "Content-Type": "application/json" },
+    credentials: "include",
+    cache:       "no-store",
+  })
+  if (res.status === 401 && typeof window !== "undefined") {
+    window.location.href = "/login"
+    return undefined as T
+  }
+  if (res.status === 204) return undefined as T
+  const data = await res.json().catch(() => null)
+  if (!res.ok) throw new APIError(res.status, data?.error ?? res.statusText)
+  return data as T
 }

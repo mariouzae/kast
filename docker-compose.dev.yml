@@ -32,6 +32,10 @@ services:
       - /app/node_modules
     environment:
       - API_URL=http://server:8080
+      # Mobile-app users (Access → Usuário do Aplicativo). See .env.example.
+      - FIREBASE_SERVICE_ACCOUNT=${FIREBASE_SERVICE_ACCOUNT:-}
+      - KAST_API_KEY=${KAST_API_KEY:-}
+      - KAST_API_DOMAIN=${KAST_API_DOMAIN:-}
       - WATCHPACK_POLLING=true
     depends_on:
       - server
